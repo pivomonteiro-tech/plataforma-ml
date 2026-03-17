@@ -6,7 +6,7 @@ class MercadoLivreAPI {
   constructor(accessToken) {
     // Criar um cliente HTTP com configurações padrão
     this.client = axios.create({
-      baseURL: 'https://api.mercadolibre.com',
+      baseURL: 'https://api.mercadolivre.com',
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }

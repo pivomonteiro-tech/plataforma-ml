@@ -133,7 +133,6 @@ app.get('/dashboard', (req, res) => {
     return res.status(400).send('Token não fornecido');
   }
 
-  // HTML simples para testar
   res.send(`
     <!DOCTYPE html>
     <html>
@@ -157,22 +156,31 @@ app.get('/dashboard', (req, res) => {
 
       <script>
         async function loadProducts() {
-          const response = await fetch('/api/products?token=${token}');
-          const data = await response.json();
-          
-          let html = '<h2>Seus Produtos:</h2>';
-          data.products.forEach(p => {
-            html += \`
-              <div class="product">
-                <strong>\${p.title}</strong><br>
-                Preço: R$ \${p.price.toFixed(2)}<br>
-                Vendidos: \${p.sold_quantity}<br>
-                Disponíveis: \${p.available_quantity}
-              </div>
-            \`;
-          });
-          
-          document.getElementById('products').innerHTML = html;
+          try {
+            const response = await fetch(\`/api/products?token=${token}\`);
+            const data = await response.json();
+            
+            if (data.error) {
+              document.getElementById('products').innerHTML = '<p style="color: red;">❌ Erro: ' + data.error + '</p>';
+              return;
+            }
+            
+            let html = '<h2>Seus Produtos (' + data.products_fetched + '):</h2>';
+            data.products.forEach(p => {
+              html += \`
+                <div class="product">
+                  <strong>\${p.title}</strong><br>
+                  Preço: R$ \${p.price.toFixed(2)}<br>
+                  Vendidos: \${p.sold_quantity}<br>
+                  Disponíveis: \${p.available_quantity}
+                </div>
+              \`;
+            });
+            
+            document.getElementById('products').innerHTML = html;
+          } catch (error) {
+            document.getElementById('products').innerHTML = '<p style="color: red;">❌ Erro: ' + error.message + '</p>';
+          }
         }
       </script>
     </body>

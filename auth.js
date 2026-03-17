@@ -10,7 +10,7 @@ const router = express.Router();
 router.get('/login', (req, res) => {
   try {
     // Construir URL de autenticação CORRIGIDA
-    const authUrl = `https://auth.mercadolibre.com.br/authorization?response_type=code&client_id=${process.env.ML_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.ML_REDIRECT_URI)}`;
+    const authUrl = `https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=${process.env.ML_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.ML_REDIRECT_URI)}`;
     
     console.log('🔐 Redirecionando para login do Mercado Livre...');
     console.log('URL:', authUrl);
@@ -47,7 +47,7 @@ router.get('/callback', async (req, res) => {
 
     // Fazer requisição para trocar código por token
     const response = await axios.post(
-      'https://api.mercadolibre.com/oauth/token',
+      'https://api.mercadolivre.com/oauth/token',
       {
         grant_type: 'authorization_code',
         client_id: process.env.ML_CLIENT_ID,
