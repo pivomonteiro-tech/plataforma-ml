@@ -27,7 +27,7 @@ app.get('/status', (req, res) => {
 
 app.use('/auth', authRoutes);
 
-// ROTA: Buscar PRODUTOS REAIS (públicos/populares, sem 403)
+// ROTA: Buscar PRODUTOS REAIS (públicos via /sites/MLB/search - sem 403/500)
 app.get('/api/products', async (req, res) => {
   const { token } = req.query;
 
@@ -40,47 +40,48 @@ app.get('/api/products', async (req, res) => {
 
     const ml = new MercadoLivreAPI(token);
     
-    // Autenticação básica (só para user info)
+    // Autenticação básica (só para user info - não afeta buscas públicas)
     const user = await ml.getMe();
     console.log(`✅ Autenticado como: ${user.nickname}`);
 
-    // Buscar categorias públicas (da documentação)
+    // Obter categorias públicas (da documentação)
     const categories = await ml.getCategories('MLB');
-    console.log(`📂 Categorias encontradas: ${categories.length}`);
+    console.log(`📂 Total de categorias: ${categories.length}`);
 
-    // Buscar produtos públicos em categorias populares (sem token)
+    // Categorias populares para busca (da documentação /sites/MLB/categories)
     const categoriasPopulares = [
-      'MLA1051',  // Celulares
-      'MLA1000',  // Eletrônicos
-      'MLA1574',  // Roupas
-      'MLA1744',  // Casa
-      'MLA1276'   // Esportes
+      'MLA1051',  // Celulares y Teléfonos
+      'MLA1000',  // Electrónica, Audio y Video
+      'MLA1574',  // Ropa y Accesorios
+      'MLA1744',  // Hogar, Muebles y Jardín
+      'MLA1276'   // Deportes y Fitness
     ];
 
     const allProducts = [];
-    const LIMIT_PER_CAT = 10;  // 10 produtos por categoria
+    const LIMIT_PER_CAT = 10;  // 10 produtos por categoria (evita rate limit)
 
     for (let cat of categoriasPopulares) {
       try {
-        console.log(`🔍 Buscando em categoria ${cat}...`);
-        
+        // Busca pública por categoria (da documentação /sites/MLB/search)
         const response = await ml.searchPublicProducts('', cat, 0, LIMIT_PER_CAT);
         
         if (response.results && response.results.length > 0) {
           const processed = response.results.map(product => ({
             id: product.id,
-            title: product.title.substring(0, 100),  // Limitar título
+            title: product.title.substring(0, 100),  // Limitar para dashboard
             price: product.price,
             sold_quantity: product.sold_quantity || 0,
             available_quantity: product.available_quantity || 0,
             category_id: product.category_id,
             rating: product.rating || 0,
             status: 'active',
-            thumbnail: product.thumbnail  // Imagem para dashboard
+            thumbnail: product.thumbnail  // Para imagens no dashboard
           }));
 
           allProducts.push(...processed);
-          console.log(`✅ ${cat}: ${processed.length} produtos encontrados`);
+          console.log(`✅ Categoria ${cat}: ${processed.length} produtos (mais vendidos)`);
+        } else {
+          console.log(`⚠️ Nenhum produto na categoria ${cat}`);
         }
       } catch (error) {
         console.error(`❌ Erro na categoria ${cat}:`, error.message);
@@ -94,7 +95,7 @@ app.get('/api/products', async (req, res) => {
         user: user.nickname,
         total_products: 0,
         products: [],
-        message: 'Nenhum produto encontrado. Verifique a conexão.'
+        message: 'Nenhum produto encontrado. Verifique a conexão com a API do Mercado Livre.'
       });
     }
 
@@ -102,12 +103,16 @@ app.get('/api/products', async (req, res) => {
       user: user.nickname,
       total_products: allProducts.length,
       products_fetched: allProducts.length,
-      products: allProducts.slice(0, 50),  // Limitar a 50 para performance
-      fonte_dados: 'API Pública Mercado Livre (sem autenticação)'
+      products: allProducts.slice(0, 50),  // Limitar para performance
+      fonte_dados: 'API Pública Mercado Livre (/sites/MLB/search)'
     });
 
   } catch (error) {
-    console.error('❌ Erro ao buscar produtos:', error.message);
+    console.error('❌ Erro geral ao buscar produtos:', error.message);
+    if (error.response) {
+      console.error('Status:', error.response.status);
+      console.error('Data:', error.response.data);
+    }
     res.status(500).json({ error: 'Erro ao buscar produtos', message: error.message });
   }
 });
@@ -160,7 +165,7 @@ app.get('/api/coupons', async (req, res) => {
   }
 });
 
-// ROTA: Buscar melhor produto para um cupom (usando produtos REAIS)
+// ROTA: Melhor produto para cupom (usando produtos públicos)
 app.get('/api/best-product-for-coupon', async (req, res) => {
   const { token, marca } = req.query;
 
@@ -169,80 +174,44 @@ app.get('/api/best-product-for-coupon', async (req, res) => {
   }
 
   try {
-    console.log(`🔍 Buscando melhor produto para cupom: ${marca}`);
+    console.log(`🔍 Buscando melhor produto para: ${marca}`);
 
     const ml = new MercadoLivreAPI(token);
     const user = await ml.getMe();
 
-    const allListings = [];
-    const PAGES_TO_FETCH = 10;
-    const ITEMS_PER_PAGE = 50;
-
-    // Buscar SEUS PRÓPRIOS produtos
-    for (let page = 0; page < PAGES_TO_FETCH; page++) {
-      try {
-        const listings = await ml.getMyListings(user.id, page * ITEMS_PER_PAGE, ITEMS_PER_PAGE);
-        
-        if (!listings || listings.length === 0) break;
-        
-        allListings.push(...listings);
-        
-      } catch (error) {
-        console.error(`Erro ao buscar página ${page + 1}:`, error.message);
-        break;
-      }
-    }
-
-    console.log(`📊 Total de produtos para análise: ${allListings.length}`);
-
-    if (allListings.length === 0) {
-      console.log('⚠️ AVISO: Você não tem produtos listados!');
+    // Busca pública por termo relacionado à marca (da documentação /sites/MLB/search)
+    const response = await ml.searchPublicProducts(marca, '', 0, 20);
+    
+    if (!response.results || response.results.length === 0) {
       return res.json({
         marca: marca,
         total_products_analyzed: 0,
         best_product: null,
-        message: 'Você não tem produtos listados no Mercado Livre.'
+        message: 'Nenhum produto encontrado para esta marca'
       });
     }
 
-    // Buscar detalhes de cada produto
-    const products = await Promise.all(
-      allListings.map(async (listing) => {
-        try {
-          const details = await ml.getItemDetails(listing.id);
-          return {
-            id: details.id,
-            title: details.title,
-            price: details.price,
-            sold_quantity: details.sold_quantity || 0,
-            available_quantity: details.available_quantity || 0,
-            category_id: details.category_id,
-            rating: details.rating || 0
-          };
-        } catch (error) {
-          return null;
-        }
-      })
-    );
+    const products = response.results.map(product => ({
+      id: product.id,
+      title: product.title,
+      price: product.price,
+      sold_quantity: product.sold_quantity || 0,
+      available_quantity: product.available_quantity || 0,
+      category_id: product.category_id,
+      rating: product.rating || 0
+    }));
 
-    const validProducts = products.filter(p => p !== null);
-
-    console.log(`✅ Produtos válidos para análise: ${validProducts.length}`);
-
-    // Selecionar o melhor produto
-    const bestProduct = selectBestProduct(validProducts);
-
-    console.log(`✅ Melhor produto selecionado: ${bestProduct ? bestProduct.title : 'Nenhum'}`);
+    // Selecionar melhor produto (sua função selectBestProduct)
+    const bestProduct = selectBestProduct(products);
 
     res.json({
       marca: marca,
-      total_products_analyzed: validProducts.length,
+      total_products_analyzed: products.length,
       best_product: bestProduct
     });
 
   } catch (error) {
     console.error('❌ Erro ao buscar melhor produto:', error.message);
-    console.error('Stack:', error.stack);
     res.status(500).json({ error: 'Erro ao buscar melhor produto', message: error.message });
   }
 });
