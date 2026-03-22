@@ -27,7 +27,7 @@ app.get('/status', (req, res) => {
 
 app.use('/auth', authRoutes);
 
-// ROTA: Buscar produtos REAIS do Portal de Filiados
+// ROTA: Buscar PRODUTOS REAIS do Mercado Livre (seus próprios produtos)
 app.get('/api/products', async (req, res) => {
   const { token } = req.query;
 
@@ -36,7 +36,7 @@ app.get('/api/products', async (req, res) => {
   }
 
   try {
-    console.log('📦 Iniciando busca de produtos do Portal de Filiados...');
+    console.log('📦 Iniciando busca de PRODUTOS REAIS do Mercado Livre...');
     console.log('Token:', token.substring(0, 30) + '...');
 
     const ml = new MercadoLivreAPI(token);
@@ -45,72 +45,78 @@ app.get('/api/products', async (req, res) => {
     const user = await ml.getMe();
     console.log(`✅ Autenticado como: ${user.nickname}`);
 
-    // Buscar produtos em destaque/recomendados do portal de filiados
-    // Usando a API de busca geral (não vinculada ao usuário)
-    const allProducts = [];
+    const allListings = [];
     const PAGES_TO_FETCH = 10;
     const ITEMS_PER_PAGE = 50;
 
-    // Buscar produtos em categorias populares
-    const categorias = ['MLA1000', 'MLA1051', 'MLA1071', 'MLA1384', 'MLA1953'];
-
-    for (let categoria of categorias) {
-      for (let page = 0; page < 2; page++) {
-        try {
-          console.log(`📍 Buscando produtos da categoria ${categoria}, página ${page + 1}...`);
-          
-          // Buscar produtos da categoria
-          const response = await ml.searchProducts(categoria, page * ITEMS_PER_PAGE, ITEMS_PER_PAGE);
-          
-          if (!response || !response.results || response.results.length === 0) {
-            console.log(`⚠️ Nenhum produto encontrado na categoria ${categoria}, página ${page + 1}`);
-            break;
-          }
-          
-          allProducts.push(...response.results);
-          console.log(`✅ Categoria ${categoria}, página ${page + 1}: ${response.results.length} produtos`);
-          
-        } catch (error) {
-          console.error(`❌ Erro ao buscar categoria ${categoria}:`, error.message);
+    // Buscar SEUS PRÓPRIOS produtos listados
+    for (let page = 0; page < PAGES_TO_FETCH; page++) {
+      try {
+        console.log(`📍 Buscando página ${page + 1}/${PAGES_TO_FETCH} de seus produtos...`);
+        
+        const listings = await ml.getMyListings(user.id, page * ITEMS_PER_PAGE, ITEMS_PER_PAGE);
+        
+        if (!listings || listings.length === 0) {
+          console.log(`⚠️ Nenhum produto encontrado na página ${page + 1}`);
           break;
         }
+        
+        allListings.push(...listings);
+        console.log(`✅ Página ${page + 1}: ${listings.length} produtos`);
+        
+      } catch (error) {
+        console.error(`❌ Erro ao buscar página ${page + 1}:`, error.message);
+        break;
       }
     }
 
-    console.log(`📊 Total de produtos encontrados: ${allProducts.length}`);
+    console.log(`📊 Total de produtos encontrados: ${allListings.length}`);
 
-    if (allProducts.length === 0) {
-      console.log('⚠️ AVISO: Nenhum produto encontrado no Portal de Filiados!');
+    if (allListings.length === 0) {
+      console.log('⚠️ AVISO: Você não tem produtos listados no Mercado Livre!');
       return res.json({
         user: user.nickname,
         total_products: 0,
         products_fetched: 0,
-        products: []
+        products: [],
+        message: 'Você não tem produtos listados. Crie alguns produtos no Mercado Livre para começar.'
       });
     }
 
-    // Processar produtos
-    const products = allProducts.slice(0, 500).map(product => {
-      return {
-        id: product.id,
-        title: product.title,
-        price: product.price,
-        sold_quantity: product.sold_quantity || 0,
-        available_quantity: product.available_quantity || 100,
-        category_id: product.category_id,
-        rating: product.rating || 0,
-        status: product.status || 'active',
-        thumbnail: product.thumbnail
-      };
-    });
+    // Buscar detalhes de cada produto
+    const products = await Promise.all(
+      allListings.map(async (listing) => {
+        try {
+          console.log(`🔍 Buscando detalhes do produto: ${listing.id}`);
+          
+          const details = await ml.getItemDetails(listing.id);
+          
+          return {
+            id: details.id,
+            title: details.title,
+            price: details.price,
+            sold_quantity: details.sold_quantity || 0,
+            available_quantity: details.available_quantity || 0,
+            category_id: details.category_id,
+            rating: details.rating || 0,
+            status: details.status || 'active'
+          };
+        } catch (error) {
+          console.error(`❌ Erro ao buscar detalhes do produto ${listing.id}:`, error.message);
+          return null;
+        }
+      })
+    );
 
-    console.log(`✅ Produtos processados: ${products.length}`);
+    const validProducts = products.filter(p => p !== null);
+
+    console.log(`✅ Produtos válidos: ${validProducts.length}`);
 
     res.json({
       user: user.nickname,
-      total_products: allProducts.length,
-      products_fetched: products.length,
-      products: products
+      total_products: allListings.length,
+      products_fetched: validProducts.length,
+      products: validProducts
     });
 
   } catch (error) {
@@ -168,7 +174,7 @@ app.get('/api/coupons', async (req, res) => {
   }
 });
 
-// ROTA: Buscar melhor produto para um cupom (usando produtos reais)
+// ROTA: Buscar melhor produto para um cupom (usando produtos REAIS)
 app.get('/api/best-product-for-coupon', async (req, res) => {
   const { token, marca } = req.query;
 
@@ -182,60 +188,69 @@ app.get('/api/best-product-for-coupon', async (req, res) => {
     const ml = new MercadoLivreAPI(token);
     const user = await ml.getMe();
 
-    // Buscar produtos em categorias populares
-    const allProducts = [];
-    const categorias = ['MLA1000', 'MLA1051', 'MLA1071', 'MLA1384', 'MLA1953'];
+    const allListings = [];
+    const PAGES_TO_FETCH = 10;
+    const ITEMS_PER_PAGE = 50;
 
-    for (let categoria of categorias) {
+    // Buscar SEUS PRÓPRIOS produtos
+    for (let page = 0; page < PAGES_TO_FETCH; page++) {
       try {
-        console.log(`📍 Buscando produtos da categoria ${categoria}...`);
+        const listings = await ml.getMyListings(user.id, page * ITEMS_PER_PAGE, ITEMS_PER_PAGE);
         
-        const response = await ml.searchProducts(categoria, 0, 50);
+        if (!listings || listings.length === 0) break;
         
-        if (response && response.results) {
-          allProducts.push(...response.results);
-        }
+        allListings.push(...listings);
         
       } catch (error) {
-        console.error(`Erro ao buscar categoria ${categoria}:`, error.message);
-        continue;
+        console.error(`Erro ao buscar página ${page + 1}:`, error.message);
+        break;
       }
     }
 
-    console.log(`📊 Total de produtos para análise: ${allProducts.length}`);
+    console.log(`📊 Total de produtos para análise: ${allListings.length}`);
 
-    if (allProducts.length === 0) {
-      console.log('⚠️ AVISO: Nenhum produto encontrado!');
+    if (allListings.length === 0) {
+      console.log('⚠️ AVISO: Você não tem produtos listados!');
       return res.json({
         marca: marca,
         total_products_analyzed: 0,
-        best_product: null
+        best_product: null,
+        message: 'Você não tem produtos listados no Mercado Livre.'
       });
     }
 
-    // Converter para formato padrão
-    const products = allProducts.map(product => {
-      return {
-        id: product.id,
-        title: product.title,
-        price: product.price,
-        sold_quantity: product.sold_quantity || 0,
-        available_quantity: product.available_quantity || 100,
-        category_id: product.category_id,
-        rating: product.rating || 0
-      };
-    });
+    // Buscar detalhes de cada produto
+    const products = await Promise.all(
+      allListings.map(async (listing) => {
+        try {
+          const details = await ml.getItemDetails(listing.id);
+          return {
+            id: details.id,
+            title: details.title,
+            price: details.price,
+            sold_quantity: details.sold_quantity || 0,
+            available_quantity: details.available_quantity || 0,
+            category_id: details.category_id,
+            rating: details.rating || 0
+          };
+        } catch (error) {
+          return null;
+        }
+      })
+    );
 
-    console.log(`✅ Produtos para análise: ${products.length}`);
+    const validProducts = products.filter(p => p !== null);
+
+    console.log(`✅ Produtos válidos para análise: ${validProducts.length}`);
 
     // Selecionar o melhor produto
-    const bestProduct = selectBestProduct(products);
+    const bestProduct = selectBestProduct(validProducts);
 
     console.log(`✅ Melhor produto selecionado: ${bestProduct ? bestProduct.title : 'Nenhum'}`);
 
     res.json({
       marca: marca,
-      total_products_analyzed: products.length,
+      total_products_analyzed: validProducts.length,
       best_product: bestProduct
     });
 
@@ -273,39 +288,62 @@ app.get('/api/relatorio-completo', async (req, res) => {
 
     console.log(`📊 Total de cupons: ${allCoupons.length}`);
 
-    // Buscar produtos reais
-    const allProducts = [];
-    const categorias = ['MLA1000', 'MLA1051', 'MLA1071', 'MLA1384', 'MLA1953'];
+    // Buscar SEUS PRÓPRIOS produtos REAIS
+    const allListings = [];
+    const PAGES_TO_FETCH_PRODUCTS = 10;
+    const ITEMS_PER_PAGE = 50;
 
-    for (let categoria of categorias) {
+    for (let page = 0; page < PAGES_TO_FETCH_PRODUCTS; page++) {
       try {
-        const response = await ml.searchProducts(categoria, 0, 50);
-        if (response && response.results) {
-          allProducts.push(...response.results);
-        }
+        const listings = await ml.getMyListings(user.id, page * ITEMS_PER_PAGE, ITEMS_PER_PAGE);
+        if (!listings || listings.length === 0) break;
+        allListings.push(...listings);
       } catch (error) {
-        console.error(`Erro ao buscar categoria ${categoria}:`, error.message);
-        continue;
+        console.error(`Erro ao buscar página ${page + 1}:`, error.message);
+        break;
       }
     }
 
-    const products = allProducts.map(product => {
-      return {
-        id: product.id,
-        title: product.title,
-        price: product.price,
-        sold_quantity: product.sold_quantity || 0,
-        available_quantity: product.available_quantity || 100,
-        category_id: product.category_id,
-        rating: product.rating || 0
-      };
-    });
+    console.log(`📊 Total de seus produtos: ${allListings.length}`);
 
-    console.log(`📊 Total de produtos para análise: ${products.length}`);
+    if (allListings.length === 0) {
+      return res.json({
+        usuario: user.nickname,
+        total_cupons: allCoupons.length,
+        total_produtos: 0,
+        cupons_filtrados: 0,
+        relatorio: [],
+        message: 'Você não tem produtos listados no Mercado Livre.'
+      });
+    }
+
+    // Buscar detalhes dos produtos
+    const products = await Promise.all(
+      allListings.map(async (listing) => {
+        try {
+          const details = await ml.getItemDetails(listing.id);
+          return {
+            id: details.id,
+            title: details.title,
+            price: details.price,
+            sold_quantity: details.sold_quantity || 0,
+            available_quantity: details.available_quantity || 0,
+            category_id: details.category_id,
+            rating: details.rating || 0
+          };
+        } catch (error) {
+          return null;
+        }
+      })
+    );
+
+    const validProducts = products.filter(p => p !== null);
+
+    console.log(`📊 Total de produtos válidos: ${validProducts.length}`);
 
     // Processar cada cupom e encontrar melhor produto
     const relatorio = allCoupons.map(cupom => {
-      const bestProduct = selectBestProduct(products);
+      const bestProduct = selectBestProduct(validProducts);
       
       if (!bestProduct) {
         return null;
@@ -352,7 +390,7 @@ app.get('/api/relatorio-completo', async (req, res) => {
     res.json({
       usuario: user.nickname,
       total_cupons: allCoupons.length,
-      total_produtos: products.length,
+      total_produtos: validProducts.length,
       cupons_filtrados: relatorioFiltrado.length,
       relatorio: relatorioFiltrado
     });
@@ -388,37 +426,51 @@ app.get('/api/relatorio-csv', async (req, res) => {
       allCoupons.push(...coupons);
     }
 
-    // Buscar produtos reais
-    const allProducts = [];
-    const categorias = ['MLA1000', 'MLA1051', 'MLA1071', 'MLA1384', 'MLA1953'];
+    // Buscar SEUS PRÓPRIOS produtos REAIS
+    const allListings = [];
+    const PAGES_TO_FETCH_PRODUCTS = 10;
+    const ITEMS_PER_PAGE = 50;
 
-    for (let categoria of categorias) {
+    for (let page = 0; page < PAGES_TO_FETCH_PRODUCTS; page++) {
       try {
-        const response = await ml.searchProducts(categoria, 0, 50);
-        if (response && response.results) {
-          allProducts.push(...response.results);
-        }
+        const listings = await ml.getMyListings(user.id, page * ITEMS_PER_PAGE, ITEMS_PER_PAGE);
+        if (!listings || listings.length === 0) break;
+        allListings.push(...listings);
       } catch (error) {
-        console.error(`Erro ao buscar categoria ${categoria}:`, error.message);
-        continue;
+        console.error(`Erro ao buscar página ${page + 1}:`, error.message);
+        break;
       }
     }
 
-    const products = allProducts.map(product => {
-      return {
-        id: product.id,
-        title: product.title,
-        price: product.price,
-        sold_quantity: product.sold_quantity || 0,
-        available_quantity: product.available_quantity || 100,
-        category_id: product.category_id,
-        rating: product.rating || 0
-      };
-    });
+    if (allListings.length === 0) {
+      return res.status(400).json({ error: 'Você não tem produtos listados no Mercado Livre.' });
+    }
+
+    // Buscar detalhes dos produtos
+    const products = await Promise.all(
+      allListings.map(async (listing) => {
+        try {
+          const details = await ml.getItemDetails(listing.id);
+          return {
+            id: details.id,
+            title: details.title,
+            price: details.price,
+            sold_quantity: details.sold_quantity || 0,
+            available_quantity: details.available_quantity || 0,
+            category_id: details.category_id,
+            rating: details.rating || 0
+          };
+        } catch (error) {
+          return null;
+        }
+      })
+    );
+
+    const validProducts = products.filter(p => p !== null);
 
     // Processar cada cupom
     const relatorio = allCoupons.map(cupom => {
-      const bestProduct = selectBestProduct(products);
+      const bestProduct = selectBestProduct(validProducts);
       
       if (!bestProduct) {
         return null;
