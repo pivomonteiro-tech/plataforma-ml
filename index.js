@@ -27,7 +27,7 @@ app.get('/status', (req, res) => {
 
 app.use('/auth', authRoutes);
 
-// ROTA: Produtos reais via scraping (sem API bloqueada)
+// ROTA: Produtos reais via scraping (sem API)
 app.get('/api/products', async (req, res) => {
   const { token } = req.query;
 
@@ -37,7 +37,7 @@ app.get('/api/products', async (req, res) => {
     console.log('📦 Buscando produtos reais via scraping...');
 
     const ml = new MercadoLivreAPI(token);
-    const user = await ml.getMe();
+    const user = await ml.getMe();  // Agora corrigido
     console.log(`✅ Usuário: ${user.nickname}`);
 
     const categories = await ml.getCategories();
@@ -52,7 +52,7 @@ app.get('/api/products', async (req, res) => {
         
         if (response.results && response.results.length > 0) {
           allProducts.push(...response.results);
-          console.log(`✅ ${cat.id}: ${response.results.length} produtos reais (scraping)`);
+          console.log(`✅ ${cat.id} (${cat.name}): ${response.results.length} produtos reais (scraping)`);
         }
       } catch (error) {
         console.error(`❌ Categoria ${cat.id}:`, error.message);
@@ -66,7 +66,7 @@ app.get('/api/products', async (req, res) => {
         user: user.nickname,
         total_products: 0,
         products: [],
-        message: 'Nenhum produto encontrado (tente novamente)'
+        message: 'Nenhum produto encontrado (tente novamente em alguns minutos)'
       });
     }
 
@@ -81,54 +81,6 @@ app.get('/api/products', async (req, res) => {
   } catch (error) {
     console.error('❌ Erro geral produtos:', error.message);
     res.status(500).json({ error: 'Erro ao buscar produtos', message: error.message });
-  }
-});
-
-// ROTA: Buscar cupons
-app.get('/api/coupons', async (req, res) => {
-  const { token } = req.query;
-
-  if (!token) {
-    return res.status(401).json({ error: 'Token não fornecido' });
-  }
-
-  try {
-    console.log('🎟️ Iniciando busca de cupons...');
-
-    const allCoupons = [];
-    const PAGES_TO_FETCH = 20;
-    const COUPONS_PER_PAGE = 15;
-
-    for (let page = 0; page < PAGES_TO_FETCH; page++) {
-      try {
-        console.log(`📍 Buscando página ${page + 1}/${PAGES_TO_FETCH} de cupons...`);
-        
-        const coupons = generateMockCoupons(page, COUPONS_PER_PAGE);
-        
-        if (!coupons || coupons.length === 0) {
-          console.log(`⚠️ Nenhum cupom encontrado na página ${page + 1}`);
-          break;
-        }
-        
-        allCoupons.push(...coupons);
-        console.log(`✅ Página ${page + 1}: ${coupons.length} cupons`);
-        
-      } catch (error) {
-        console.error(`❌ Erro ao buscar página ${page + 1}:`, error.message);
-        break;
-      }
-    }
-
-    console.log(`📊 Total de cupons encontrados: ${allCoupons.length}`);
-
-    res.json({
-      total_coupons: allCoupons.length,
-      coupons: allCoupons
-    });
-
-  } catch (error) {
-    console.error('❌ Erro ao buscar cupons:', error.message);
-    res.status(500).json({ error: 'Erro ao buscar cupons', message: error.message });
   }
 });
 
