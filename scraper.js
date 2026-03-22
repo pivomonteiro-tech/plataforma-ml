@@ -17,31 +17,97 @@ async function scrapeMLProducts(categoryUrl, limit = 50) {
     console.log(`🔍 Scraping: ${categoryUrl}`);
     await page.goto(categoryUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    await page.waitForSelector('.ui-search-results__item', { timeout: 10000 });
+    // Aguardar carregamento - tenta múltiplos seletores
+    try {
+      await page.waitForSelector('[data-item-id]', { timeout: 10000 });
+      console.log(`✅ Seletor [data-item-id] encontrado`);
+    } catch (e) {
+      try {
+        await page.waitForSelector('.ui-search-results__item', { timeout: 10000 });
+        console.log(`✅ Seletor .ui-search-results__item encontrado`);
+      } catch (e2) {
+        try {
+          await page.waitForSelector('[data-testid="item"]', { timeout: 10000 });
+          console.log(`✅ Seletor [data-testid="item"] encontrado`);
+        } catch (e3) {
+          console.error('❌ Nenhum seletor de produto encontrado');
+          await page.waitForSelector('[class*="item"]', { timeout: 10000 });
+        }
+      }
+    }
 
+    // Scroll para carregar mais itens
+    await page.evaluate(async () => {
+      for (let i = 0; i < 3; i++) {
+        window.scrollBy(0, window.innerHeight);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    });
+
+    // Extrair produtos
     const products = await page.evaluate((lim) => {
-      const items = document.querySelectorAll('.ui-search-results__item');
       const results = [];
+
+      // Tentar seletor 1
+      let items = document.querySelectorAll('[data-item-id]');
+      if (items.length === 0) {
+        items = document.querySelectorAll('.ui-search-results__item');
+      }
+      if (items.length === 0) {
+        items = document.querySelectorAll('[data-testid="item"]');
+      }
+      if (items.length === 0) {
+        items = document.querySelectorAll('article[class*="item"], div[class*="item-card"]');
+      }
+
       for (let i = 0; i < Math.min(items.length, lim); i++) {
         const item = items[i];
-        const title = item.querySelector('.ui-search-item__title')?.textContent?.trim() || 'N/A';
-        const priceStr = item.querySelector('.andes-money-amount__fraction')?.textContent?.trim() || '0';
-        const soldStr = item.querySelector('[data-testid="sold-quantity"]')?.textContent?.trim() || '0';
-        const thumbnail = item.querySelector('img')?.src || '';
-        const link = item.querySelector('a')?.href || '';
 
+        // Extrair título
+        let title = item.querySelector('h2')?.textContent?.trim() ||
+                    item.querySelector('[class*="title"]')?.textContent?.trim() ||
+                    item.querySelector('a')?.title ||
+                    item.textContent?.substring(0, 100) ||
+                    'N/A';
+
+        // Extrair preço
+        let priceStr = item.querySelector('[class*="price"]')?.textContent?.trim() ||
+                       item.querySelector('[class*="amount"]')?.textContent?.trim() ||
+                       item.querySelector('span[class*="andes"]')?.textContent?.trim() ||
+                       '0';
+
+        // Extrair vendidos
+        let soldStr = item.querySelector('[data-testid="sold-quantity"]')?.textContent?.trim() ||
+                      item.querySelector('[class*="sold"]')?.textContent?.trim() ||
+                      item.querySelector('[class*="quantity"]')?.textContent?.trim() ||
+                      '0 vendidos';
+
+        // Extrair imagem
+        let thumbnail = item.querySelector('img')?.src ||
+                        item.querySelector('img')?.getAttribute('data-src') ||
+                        '';
+
+        // Extrair link
+        let link = item.querySelector('a')?.href || '';
+
+        // Parse preço
         const price = parseFloat(priceStr.replace(/[^\d,]/g, '').replace(',', '.')) || 0;
+
+        // Parse vendidos
         const sold_quantity = parseInt(soldStr.replace(/[^\d]/g, '')) || 0;
 
-        results.push({
-          title: title.substring(0, 100),
-          price,
-          sold_quantity,
-          available_quantity: Math.floor(Math.random() * 500) + 50,
-          thumbnail,
-          link
-        });
+        if (title && title !== 'N/A') {
+          results.push({
+            title: title.substring(0, 100),
+            price,
+            sold_quantity,
+            available_quantity: Math.floor(Math.random() * 500) + 50,
+            thumbnail,
+            link
+          });
+        }
       }
+
       return results;
     }, limit);
 
