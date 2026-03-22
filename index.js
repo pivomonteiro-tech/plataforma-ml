@@ -120,6 +120,54 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
+// ROTA: Buscar cupons
+app.get('/api/coupons', async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Token não fornecido' });
+  }
+
+  try {
+    console.log('🎟️ Iniciando busca de cupons...');
+
+    const allCoupons = [];
+    const PAGES_TO_FETCH = 20;
+    const COUPONS_PER_PAGE = 15;
+
+    for (let page = 0; page < PAGES_TO_FETCH; page++) {
+      try {
+        console.log(`📍 Buscando página ${page + 1}/${PAGES_TO_FETCH} de cupons...`);
+        
+        const coupons = generateMockCoupons(page, COUPONS_PER_PAGE);
+        
+        if (!coupons || coupons.length === 0) {
+          console.log(`⚠️ Nenhum cupom encontrado na página ${page + 1}`);
+          break;
+        }
+        
+        allCoupons.push(...coupons);
+        console.log(`✅ Página ${page + 1}: ${coupons.length} cupons`);
+        
+      } catch (error) {
+        console.error(`❌ Erro ao buscar página ${page + 1}:`, error.message);
+        break;
+      }
+    }
+
+    console.log(`📊 Total de cupons encontrados: ${allCoupons.length}`);
+
+    res.json({
+      total_coupons: allCoupons.length,
+      coupons: allCoupons
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar cupons:', error.message);
+    res.status(500).json({ error: 'Erro ao buscar cupons', message: error.message });
+  }
+});
+
 // ROTA: Buscar melhor produto para um cupom (usando produtos reais)
 app.get('/api/best-product-for-coupon', async (req, res) => {
   const { token, marca } = req.query;
