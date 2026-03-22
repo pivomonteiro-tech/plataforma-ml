@@ -27,26 +27,7 @@ app.get('/status', (req, res) => {
 
 app.use('/auth', authRoutes);
 
-// Dados mock de produtos disponíveis para o usuário logado
-const produtosDisponiveis = [
-  { id: 1, title: 'Fone Bluetooth Premium', price: 89.90, sold_quantity: 1250, available_quantity: 45, rating: 4.8, category_id: 'MLA123' },
-  { id: 2, title: 'Carregador Rápido USB-C', price: 49.90, sold_quantity: 850, available_quantity: 120, rating: 4.5, category_id: 'MLA124' },
-  { id: 3, title: 'Cabo HDMI 2.0', price: 29.90, sold_quantity: 2100, available_quantity: 300, rating: 4.3, category_id: 'MLA125' },
-  { id: 4, title: 'Adaptador Wireless', price: 59.90, sold_quantity: 650, available_quantity: 80, rating: 4.6, category_id: 'MLA126' },
-  { id: 5, title: 'Protetor de Tela Vidro', price: 19.90, sold_quantity: 3200, available_quantity: 500, rating: 4.7, category_id: 'MLA127' },
-  { id: 6, title: 'Capa Silicone Premium', price: 34.90, sold_quantity: 1800, available_quantity: 250, rating: 4.4, category_id: 'MLA128' },
-  { id: 7, title: 'Bateria Externa 20000mAh', price: 79.90, sold_quantity: 920, available_quantity: 60, rating: 4.9, category_id: 'MLA129' },
-  { id: 8, title: 'Suporte Celular Veicular', price: 44.90, sold_quantity: 1100, available_quantity: 150, rating: 4.5, category_id: 'MLA130' },
-  { id: 9, title: 'Película Protetora Matte', price: 24.90, sold_quantity: 2500, available_quantity: 400, rating: 4.6, category_id: 'MLA131' },
-  { id: 10, title: 'Ventilador USB Portátil', price: 39.90, sold_quantity: 780, available_quantity: 90, rating: 4.3, category_id: 'MLA132' },
-  { id: 11, title: 'Teclado Bluetooth Wireless', price: 99.90, sold_quantity: 540, available_quantity: 35, rating: 4.7, category_id: 'MLA133' },
-  { id: 12, title: 'Mouse Óptico USB', price: 29.90, sold_quantity: 1600, available_quantity: 200, rating: 4.4, category_id: 'MLA134' },
-  { id: 13, title: 'Hub USB 3.0 7 Portas', price: 69.90, sold_quantity: 420, available_quantity: 50, rating: 4.8, category_id: 'MLA135' },
-  { id: 14, title: 'Webcam Full HD 1080p', price: 129.90, sold_quantity: 380, available_quantity: 25, rating: 4.9, category_id: 'MLA136' },
-  { id: 15, title: 'Microfone Condensador USB', price: 149.90, sold_quantity: 290, available_quantity: 20, rating: 4.6, category_id: 'MLA137' }
-];
-
-// ROTA: Buscar produtos disponíveis
+// ROTA: Buscar produtos REAIS do Portal de Filiados
 app.get('/api/products', async (req, res) => {
   const { token } = req.query;
 
@@ -55,78 +36,91 @@ app.get('/api/products', async (req, res) => {
   }
 
   try {
-    console.log('📦 Iniciando busca de produtos disponíveis...');
+    console.log('📦 Iniciando busca de produtos do Portal de Filiados...');
     console.log('Token:', token.substring(0, 30) + '...');
 
-    // Simular autenticação
     const ml = new MercadoLivreAPI(token);
+    
+    // Obter dados do usuário autenticado
     const user = await ml.getMe();
     console.log(`✅ Autenticado como: ${user.nickname}`);
 
-    // Retornar produtos disponíveis no portal de filiados
-    console.log(`📊 Total de produtos disponíveis: ${produtosDisponiveis.length}`);
+    // Buscar produtos em destaque/recomendados do portal de filiados
+    // Usando a API de busca geral (não vinculada ao usuário)
+    const allProducts = [];
+    const PAGES_TO_FETCH = 10;
+    const ITEMS_PER_PAGE = 50;
+
+    // Buscar produtos em categorias populares
+    const categorias = ['MLA1000', 'MLA1051', 'MLA1071', 'MLA1384', 'MLA1953'];
+
+    for (let categoria of categorias) {
+      for (let page = 0; page < 2; page++) {
+        try {
+          console.log(`📍 Buscando produtos da categoria ${categoria}, página ${page + 1}...`);
+          
+          // Buscar produtos da categoria
+          const response = await ml.searchProducts(categoria, page * ITEMS_PER_PAGE, ITEMS_PER_PAGE);
+          
+          if (!response || !response.results || response.results.length === 0) {
+            console.log(`⚠️ Nenhum produto encontrado na categoria ${categoria}, página ${page + 1}`);
+            break;
+          }
+          
+          allProducts.push(...response.results);
+          console.log(`✅ Categoria ${categoria}, página ${page + 1}: ${response.results.length} produtos`);
+          
+        } catch (error) {
+          console.error(`❌ Erro ao buscar categoria ${categoria}:`, error.message);
+          break;
+        }
+      }
+    }
+
+    console.log(`📊 Total de produtos encontrados: ${allProducts.length}`);
+
+    if (allProducts.length === 0) {
+      console.log('⚠️ AVISO: Nenhum produto encontrado no Portal de Filiados!');
+      return res.json({
+        user: user.nickname,
+        total_products: 0,
+        products_fetched: 0,
+        products: []
+      });
+    }
+
+    // Processar produtos
+    const products = allProducts.slice(0, 500).map(product => {
+      return {
+        id: product.id,
+        title: product.title,
+        price: product.price,
+        sold_quantity: product.sold_quantity || 0,
+        available_quantity: product.available_quantity || 100,
+        category_id: product.category_id,
+        rating: product.rating || 0,
+        status: product.status || 'active',
+        thumbnail: product.thumbnail
+      };
+    });
+
+    console.log(`✅ Produtos processados: ${products.length}`);
 
     res.json({
       user: user.nickname,
-      total_products: produtosDisponiveis.length,
-      products_fetched: produtosDisponiveis.length,
-      products: produtosDisponiveis
+      total_products: allProducts.length,
+      products_fetched: products.length,
+      products: products
     });
 
   } catch (error) {
     console.error('❌ Erro ao buscar produtos:', error.message);
+    console.error('Stack:', error.stack);
     res.status(500).json({ error: 'Erro ao buscar produtos', message: error.message });
   }
 });
 
-app.get('/api/coupons', async (req, res) => {
-  const { token } = req.query;
-
-  if (!token) {
-    return res.status(401).json({ error: 'Token não fornecido' });
-  }
-
-  try {
-    console.log('🎟️ Iniciando busca de cupons...');
-
-    const allCoupons = [];
-    const PAGES_TO_FETCH = 20;
-    const COUPONS_PER_PAGE = 15;
-
-    for (let page = 0; page < PAGES_TO_FETCH; page++) {
-      try {
-        console.log(`📍 Buscando página ${page + 1}/${PAGES_TO_FETCH} de cupons...`);
-        
-        const coupons = generateMockCoupons(page, COUPONS_PER_PAGE);
-        
-        if (!coupons || coupons.length === 0) {
-          console.log(`⚠️ Nenhum cupom encontrado na página ${page + 1}`);
-          break;
-        }
-        
-        allCoupons.push(...coupons);
-        console.log(`✅ Página ${page + 1}: ${coupons.length} cupons`);
-        
-      } catch (error) {
-        console.error(`❌ Erro ao buscar página ${page + 1}:`, error.message);
-        break;
-      }
-    }
-
-    console.log(`📊 Total de cupons encontrados: ${allCoupons.length}`);
-
-    res.json({
-      total_coupons: allCoupons.length,
-      coupons: allCoupons
-    });
-
-  } catch (error) {
-    console.error('❌ Erro ao buscar cupons:', error.message);
-    res.status(500).json({ error: 'Erro ao buscar cupons', message: error.message });
-  }
-});
-
-// ROTA: Buscar melhor produto para um cupom
+// ROTA: Buscar melhor produto para um cupom (usando produtos reais)
 app.get('/api/best-product-for-coupon', async (req, res) => {
   const { token, marca } = req.query;
 
@@ -137,33 +131,74 @@ app.get('/api/best-product-for-coupon', async (req, res) => {
   try {
     console.log(`🔍 Buscando melhor produto para cupom: ${marca}`);
 
-    // Simular autenticação
     const ml = new MercadoLivreAPI(token);
     const user = await ml.getMe();
 
-    // Usar produtos disponíveis
-    const validProducts = produtosDisponiveis;
+    // Buscar produtos em categorias populares
+    const allProducts = [];
+    const categorias = ['MLA1000', 'MLA1051', 'MLA1071', 'MLA1384', 'MLA1953'];
 
-    console.log(`📊 Total de produtos para análise: ${validProducts.length}`);
+    for (let categoria of categorias) {
+      try {
+        console.log(`📍 Buscando produtos da categoria ${categoria}...`);
+        
+        const response = await ml.searchProducts(categoria, 0, 50);
+        
+        if (response && response.results) {
+          allProducts.push(...response.results);
+        }
+        
+      } catch (error) {
+        console.error(`Erro ao buscar categoria ${categoria}:`, error.message);
+        continue;
+      }
+    }
+
+    console.log(`📊 Total de produtos para análise: ${allProducts.length}`);
+
+    if (allProducts.length === 0) {
+      console.log('⚠️ AVISO: Nenhum produto encontrado!');
+      return res.json({
+        marca: marca,
+        total_products_analyzed: 0,
+        best_product: null
+      });
+    }
+
+    // Converter para formato padrão
+    const products = allProducts.map(product => {
+      return {
+        id: product.id,
+        title: product.title,
+        price: product.price,
+        sold_quantity: product.sold_quantity || 0,
+        available_quantity: product.available_quantity || 100,
+        category_id: product.category_id,
+        rating: product.rating || 0
+      };
+    });
+
+    console.log(`✅ Produtos para análise: ${products.length}`);
 
     // Selecionar o melhor produto
-    const bestProduct = selectBestProduct(validProducts);
+    const bestProduct = selectBestProduct(products);
 
     console.log(`✅ Melhor produto selecionado: ${bestProduct ? bestProduct.title : 'Nenhum'}`);
 
     res.json({
       marca: marca,
-      total_products_analyzed: validProducts.length,
+      total_products_analyzed: products.length,
       best_product: bestProduct
     });
 
   } catch (error) {
     console.error('❌ Erro ao buscar melhor produto:', error.message);
+    console.error('Stack:', error.stack);
     res.status(500).json({ error: 'Erro ao buscar melhor produto', message: error.message });
   }
 });
 
-// ROTA: Relatório completo com todos os cupons e melhores produtos
+// ROTA: Relatório completo com produtos REAIS
 app.get('/api/relatorio-completo', async (req, res) => {
   const { token, ordenar_por = 'score', filtro_desconto = 0 } = req.query;
 
@@ -172,7 +207,7 @@ app.get('/api/relatorio-completo', async (req, res) => {
   }
 
   try {
-    console.log('📊 Gerando relatório completo...');
+    console.log('📊 Gerando relatório completo com produtos REAIS...');
 
     const ml = new MercadoLivreAPI(token);
     const user = await ml.getMe();
@@ -190,10 +225,44 @@ app.get('/api/relatorio-completo', async (req, res) => {
 
     console.log(`📊 Total de cupons: ${allCoupons.length}`);
 
+    // Buscar produtos reais
+    const allProducts = [];
+    const categorias = ['MLA1000', 'MLA1051', 'MLA1071', 'MLA1384', 'MLA1953'];
+
+    for (let categoria of categorias) {
+      try {
+        const response = await ml.searchProducts(categoria, 0, 50);
+        if (response && response.results) {
+          allProducts.push(...response.results);
+        }
+      } catch (error) {
+        console.error(`Erro ao buscar categoria ${categoria}:`, error.message);
+        continue;
+      }
+    }
+
+    const products = allProducts.map(product => {
+      return {
+        id: product.id,
+        title: product.title,
+        price: product.price,
+        sold_quantity: product.sold_quantity || 0,
+        available_quantity: product.available_quantity || 100,
+        category_id: product.category_id,
+        rating: product.rating || 0
+      };
+    });
+
+    console.log(`📊 Total de produtos para análise: ${products.length}`);
+
     // Processar cada cupom e encontrar melhor produto
     const relatorio = allCoupons.map(cupom => {
-      const bestProduct = selectBestProduct(produtosDisponiveis);
+      const bestProduct = selectBestProduct(products);
       
+      if (!bestProduct) {
+        return null;
+      }
+
       // Calcular potencial de ganho
       const descontoNumerico = parseInt(cupom.desconto.replace(/\D/g, ''));
       const potencialGanho = (bestProduct.price * descontoNumerico / 100) * bestProduct.sold_quantity;
@@ -214,7 +283,7 @@ app.get('/api/relatorio-completo', async (req, res) => {
         score_viabilidade: bestProduct.score,
         potencial_ganho: Math.round(potencialGanho * 100) / 100
       };
-    });
+    }).filter(item => item !== null);
 
     // Aplicar filtros
     let relatorioFiltrado = relatorio.filter(item => item.desconto_numerico >= filtro_desconto);
@@ -235,6 +304,7 @@ app.get('/api/relatorio-completo', async (req, res) => {
     res.json({
       usuario: user.nickname,
       total_cupons: allCoupons.length,
+      total_produtos: products.length,
       cupons_filtrados: relatorioFiltrado.length,
       relatorio: relatorioFiltrado
     });
@@ -245,7 +315,7 @@ app.get('/api/relatorio-completo', async (req, res) => {
   }
 });
 
-// ROTA: Exportar relatório em CSV
+// ROTA: Exportar relatório em CSV (com produtos REAIS)
 app.get('/api/relatorio-csv', async (req, res) => {
   const { token, ordenar_por = 'score', filtro_desconto = 0 } = req.query;
 
@@ -270,9 +340,42 @@ app.get('/api/relatorio-csv', async (req, res) => {
       allCoupons.push(...coupons);
     }
 
+    // Buscar produtos reais
+    const allProducts = [];
+    const categorias = ['MLA1000', 'MLA1051', 'MLA1071', 'MLA1384', 'MLA1953'];
+
+    for (let categoria of categorias) {
+      try {
+        const response = await ml.searchProducts(categoria, 0, 50);
+        if (response && response.results) {
+          allProducts.push(...response.results);
+        }
+      } catch (error) {
+        console.error(`Erro ao buscar categoria ${categoria}:`, error.message);
+        continue;
+      }
+    }
+
+    const products = allProducts.map(product => {
+      return {
+        id: product.id,
+        title: product.title,
+        price: product.price,
+        sold_quantity: product.sold_quantity || 0,
+        available_quantity: product.available_quantity || 100,
+        category_id: product.category_id,
+        rating: product.rating || 0
+      };
+    });
+
     // Processar cada cupom
     const relatorio = allCoupons.map(cupom => {
-      const bestProduct = selectBestProduct(produtosDisponiveis);
+      const bestProduct = selectBestProduct(products);
+      
+      if (!bestProduct) {
+        return null;
+      }
+
       const descontoNumerico = parseInt(cupom.desconto.replace(/\D/g, ''));
       const potencialGanho = (bestProduct.price * descontoNumerico / 100) * bestProduct.sold_quantity;
 
@@ -292,7 +395,7 @@ app.get('/api/relatorio-csv', async (req, res) => {
         score_viabilidade: bestProduct.score,
         potencial_ganho: Math.round(potencialGanho * 100) / 100
       };
-    });
+    }).filter(item => item !== null);
 
     // Aplicar filtros e ordenação
     let relatorioFiltrado = relatorio.filter(item => item.desconto_numerico >= filtro_desconto);
