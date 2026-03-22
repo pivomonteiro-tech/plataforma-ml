@@ -42,9 +42,9 @@ app.get('/api/products', async (req, res) => {
     const user = await ml.getMe();
     console.log(`✅ Autenticado como: ${user.nickname}`);
 
-    // Buscar produtos de 20 páginas (50 produtos por página = 1000 produtos)
+    // Buscar produtos de 10 páginas (50 produtos por página = 500 produtos)
     const allListings = [];
-    const PAGES_TO_FETCH = 20;
+    const PAGES_TO_FETCH = 10;
     const ITEMS_PER_PAGE = 50;
 
     for (let page = 0; page < PAGES_TO_FETCH; page++) {
@@ -169,9 +169,9 @@ app.get('/api/best-product-for-coupon', async (req, res) => {
     const ml = new MercadoLivreAPI(token);
     const user = await ml.getMe();
 
-    // Buscar produtos de 20 páginas
+    // Buscar produtos de 10 páginas
     const allListings = [];
-    const PAGES_TO_FETCH = 20;
+    const PAGES_TO_FETCH = 10;
     const ITEMS_PER_PAGE = 50;
 
     for (let page = 0; page < PAGES_TO_FETCH; page++) {
