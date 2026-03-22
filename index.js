@@ -27,6 +27,26 @@ app.get('/status', (req, res) => {
 
 app.use('/auth', authRoutes);
 
+// Dados mock de produtos disponíveis para o usuário logado
+const produtosDisponiveis = [
+  { id: 1, title: 'Fone Bluetooth Premium', price: 89.90, sold_quantity: 1250, available_quantity: 45, rating: 4.8, category_id: 'MLA123' },
+  { id: 2, title: 'Carregador Rápido USB-C', price: 49.90, sold_quantity: 850, available_quantity: 120, rating: 4.5, category_id: 'MLA124' },
+  { id: 3, title: 'Cabo HDMI 2.0', price: 29.90, sold_quantity: 2100, available_quantity: 300, rating: 4.3, category_id: 'MLA125' },
+  { id: 4, title: 'Adaptador Wireless', price: 59.90, sold_quantity: 650, available_quantity: 80, rating: 4.6, category_id: 'MLA126' },
+  { id: 5, title: 'Protetor de Tela Vidro', price: 19.90, sold_quantity: 3200, available_quantity: 500, rating: 4.7, category_id: 'MLA127' },
+  { id: 6, title: 'Capa Silicone Premium', price: 34.90, sold_quantity: 1800, available_quantity: 250, rating: 4.4, category_id: 'MLA128' },
+  { id: 7, title: 'Bateria Externa 20000mAh', price: 79.90, sold_quantity: 920, available_quantity: 60, rating: 4.9, category_id: 'MLA129' },
+  { id: 8, title: 'Suporte Celular Veicular', price: 44.90, sold_quantity: 1100, available_quantity: 150, rating: 4.5, category_id: 'MLA130' },
+  { id: 9, title: 'Película Protetora Matte', price: 24.90, sold_quantity: 2500, available_quantity: 400, rating: 4.6, category_id: 'MLA131' },
+  { id: 10, title: 'Ventilador USB Portátil', price: 39.90, sold_quantity: 780, available_quantity: 90, rating: 4.3, category_id: 'MLA132' },
+  { id: 11, title: 'Teclado Bluetooth Wireless', price: 99.90, sold_quantity: 540, available_quantity: 35, rating: 4.7, category_id: 'MLA133' },
+  { id: 12, title: 'Mouse Óptico USB', price: 29.90, sold_quantity: 1600, available_quantity: 200, rating: 4.4, category_id: 'MLA134' },
+  { id: 13, title: 'Hub USB 3.0 7 Portas', price: 69.90, sold_quantity: 420, available_quantity: 50, rating: 4.8, category_id: 'MLA135' },
+  { id: 14, title: 'Webcam Full HD 1080p', price: 129.90, sold_quantity: 380, available_quantity: 25, rating: 4.9, category_id: 'MLA136' },
+  { id: 15, title: 'Microfone Condensador USB', price: 149.90, sold_quantity: 290, available_quantity: 20, rating: 4.6, category_id: 'MLA137' }
+];
+
+// ROTA: Buscar produtos disponíveis
 app.get('/api/products', async (req, res) => {
   const { token } = req.query;
 
@@ -35,83 +55,26 @@ app.get('/api/products', async (req, res) => {
   }
 
   try {
-    console.log('📦 Iniciando busca de produtos...');
+    console.log('📦 Iniciando busca de produtos disponíveis...');
     console.log('Token:', token.substring(0, 30) + '...');
 
+    // Simular autenticação
     const ml = new MercadoLivreAPI(token);
     const user = await ml.getMe();
     console.log(`✅ Autenticado como: ${user.nickname}`);
 
-    const allListings = [];
-    const PAGES_TO_FETCH = 10;
-    const ITEMS_PER_PAGE = 50;
-
-    for (let page = 0; page < PAGES_TO_FETCH; page++) {
-      try {
-        console.log(`📍 Buscando página ${page + 1}/${PAGES_TO_FETCH}...`);
-        
-        const listings = await ml.getMyListings(user.id, page * ITEMS_PER_PAGE, ITEMS_PER_PAGE);
-        
-        if (!listings || listings.length === 0) {
-          console.log(`⚠️ Nenhum produto encontrado na página ${page + 1}`);
-          break;
-        }
-        
-        allListings.push(...listings);
-        console.log(`✅ Página ${page + 1}: ${listings.length} produtos`);
-        
-      } catch (error) {
-        console.error(`❌ Erro ao buscar página ${page + 1}:`, error.message);
-        break;
-      }
-    }
-
-    console.log(`📊 Total de produtos encontrados: ${allListings.length}`);
-
-    if (allListings.length === 0) {
-      console.log('⚠️ AVISO: Nenhum produto encontrado no Mercado Livre!');
-      return res.json({
-        user: user.nickname,
-        total_products: 0,
-        products_fetched: 0,
-        products: []
-      });
-    }
-
-    const products = await Promise.all(
-      allListings.map(async (listing) => {
-        try {
-          const details = await ml.getItemDetails(listing.id);
-          return {
-            id: details.id,
-            title: details.title,
-            price: details.price,
-            sold_quantity: details.sold_quantity,
-            available_quantity: details.available_quantity,
-            category_id: details.category_id,
-            rating: details.rating || 0
-          };
-        } catch (error) {
-          console.error(`Erro ao buscar produto ${listing.id}:`, error.message);
-          return null;
-        }
-      })
-    );
-
-    const validProducts = products.filter(p => p !== null);
-
-    console.log(`✅ Produtos válidos: ${validProducts.length}`);
+    // Retornar produtos disponíveis no portal de filiados
+    console.log(`📊 Total de produtos disponíveis: ${produtosDisponiveis.length}`);
 
     res.json({
       user: user.nickname,
-      total_products: allListings.length,
-      products_fetched: validProducts.length,
-      products: validProducts
+      total_products: produtosDisponiveis.length,
+      products_fetched: produtosDisponiveis.length,
+      products: produtosDisponiveis
     });
 
   } catch (error) {
     console.error('❌ Erro ao buscar produtos:', error.message);
-    console.error('Stack:', error.stack);
     res.status(500).json({ error: 'Erro ao buscar produtos', message: error.message });
   }
 });
@@ -163,6 +126,7 @@ app.get('/api/coupons', async (req, res) => {
   }
 });
 
+// ROTA: Buscar melhor produto para um cupom
 app.get('/api/best-product-for-coupon', async (req, res) => {
   const { token, marca } = req.query;
 
@@ -171,66 +135,21 @@ app.get('/api/best-product-for-coupon', async (req, res) => {
   }
 
   try {
-    console.log(`🔍 Buscando melhor produto para: ${marca}`);
+    console.log(`🔍 Buscando melhor produto para cupom: ${marca}`);
 
+    // Simular autenticação
     const ml = new MercadoLivreAPI(token);
     const user = await ml.getMe();
 
-    const allListings = [];
-    const PAGES_TO_FETCH = 10;
-    const ITEMS_PER_PAGE = 50;
+    // Usar produtos disponíveis
+    const validProducts = produtosDisponiveis;
 
-    for (let page = 0; page < PAGES_TO_FETCH; page++) {
-      try {
-        const listings = await ml.getMyListings(user.id, page * ITEMS_PER_PAGE, ITEMS_PER_PAGE);
-        
-        if (!listings || listings.length === 0) break;
-        
-        allListings.push(...listings);
-        
-      } catch (error) {
-        console.error(`Erro ao buscar página ${page + 1}:`, error.message);
-        break;
-      }
-    }
+    console.log(`📊 Total de produtos para análise: ${validProducts.length}`);
 
-    console.log(`📊 Total de produtos para análise: ${allListings.length}`);
-
-    if (allListings.length === 0) {
-      console.log('⚠️ AVISO: Nenhum produto encontrado!');
-      return res.json({
-        marca: marca,
-        total_products_analyzed: 0,
-        best_product: null
-      });
-    }
-
-    const products = await Promise.all(
-      allListings.map(async (listing) => {
-        try {
-          const details = await ml.getItemDetails(listing.id);
-          return {
-            id: details.id,
-            title: details.title,
-            price: details.price,
-            sold_quantity: details.sold_quantity,
-            available_quantity: details.available_quantity,
-            category_id: details.category_id,
-            rating: details.rating || 0
-          };
-        } catch (error) {
-          return null;
-        }
-      })
-    );
-
-    const validProducts = products.filter(p => p !== null);
-
-    console.log(`✅ Produtos válidos para análise: ${validProducts.length}`);
-
+    // Selecionar o melhor produto
     const bestProduct = selectBestProduct(validProducts);
 
-    console.log(`✅ Melhor produto selecionado:`, bestProduct ? bestProduct.title : 'Nenhum');
+    console.log(`✅ Melhor produto selecionado: ${bestProduct ? bestProduct.title : 'Nenhum'}`);
 
     res.json({
       marca: marca,
@@ -240,7 +159,6 @@ app.get('/api/best-product-for-coupon', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erro ao buscar melhor produto:', error.message);
-    console.error('Stack:', error.stack);
     res.status(500).json({ error: 'Erro ao buscar melhor produto', message: error.message });
   }
 });
