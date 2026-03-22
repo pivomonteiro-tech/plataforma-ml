@@ -27,6 +27,7 @@ app.get('/status', (req, res) => {
 
 app.use('/auth', authRoutes);
 
+// ROTA: Buscar produtos com paginação (20 páginas)
 app.get('/api/products', async (req, res) => {
   const { token } = req.query;
 
@@ -35,12 +36,160 @@ app.get('/api/products', async (req, res) => {
   }
 
   try {
+    console.log('📦 Iniciando busca de produtos...');
+
     const ml = new MercadoLivreAPI(token);
     const user = await ml.getMe();
-    const listings = await ml.getMyListings(user.id);
-    
+    console.log(`✅ Autenticado como: ${user.nickname}`);
+
+    // Buscar produtos de 20 páginas (50 produtos por página = 1000 produtos)
+    const allListings = [];
+    const PAGES_TO_FETCH = 20;
+    const ITEMS_PER_PAGE = 50;
+
+    for (let page = 0; page < PAGES_TO_FETCH; page++) {
+      try {
+        console.log(`📍 Buscando página ${page + 1}/${PAGES_TO_FETCH}...`);
+        
+        const listings = await ml.getMyListings(user.id, page * ITEMS_PER_PAGE, ITEMS_PER_PAGE);
+        
+        if (!listings || listings.length === 0) {
+          console.log(`⚠️ Nenhum produto encontrado na página ${page + 1}`);
+          break;
+        }
+        
+        allListings.push(...listings);
+        console.log(`✅ Página ${page + 1}: ${listings.length} produtos`);
+        
+      } catch (error) {
+        console.error(`❌ Erro ao buscar página ${page + 1}:`, error.message);
+        break;
+      }
+    }
+
+    console.log(`📊 Total de produtos encontrados: ${allListings.length}`);
+
+    // Buscar detalhes de cada produto
     const products = await Promise.all(
-      listings.slice(0, 20).map(async (listing) => {
+      allListings.map(async (listing) => {
+        try {
+          const details = await ml.getItemDetails(listing.id);
+          return {
+            id: details.id,
+            title: details.title,
+            price: details.price,
+            sold_quantity: details.sold_quantity,
+            available_quantity: details.available_quantity,
+            category_id: details.category_id,
+            rating: details.rating || 0
+          };
+        } catch (error) {
+          console.error(`Erro ao buscar produto ${listing.id}`);
+          return null;
+        }
+      })
+    );
+
+    const validProducts = products.filter(p => p !== null);
+
+    res.json({
+      user: user.nickname,
+      total_products: allListings.length,
+      products_fetched: validProducts.length,
+      products: validProducts
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar produtos:', error.message);
+    res.status(500).json({ error: 'Erro ao buscar produtos', message: error.message });
+  }
+});
+
+// ROTA: Buscar cupons com paginação (20 páginas)
+app.get('/api/coupons', async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Token não fornecido' });
+  }
+
+  try {
+    console.log('🎟️ Iniciando busca de cupons...');
+
+    // Simular busca de cupons de 20 páginas
+    const allCoupons = [];
+    const PAGES_TO_FETCH = 20;
+    const COUPONS_PER_PAGE = 15;
+
+    for (let page = 0; page < PAGES_TO_FETCH; page++) {
+      try {
+        console.log(`📍 Buscando página ${page + 1}/${PAGES_TO_FETCH} de cupons...`);
+        
+        // Simular dados de cupons (em produção, seria uma busca real)
+        const coupons = generateMockCoupons(page, COUPONS_PER_PAGE);
+        
+        if (!coupons || coupons.length === 0) {
+          console.log(`⚠️ Nenhum cupom encontrado na página ${page + 1}`);
+          break;
+        }
+        
+        allCoupons.push(...coupons);
+        console.log(`✅ Página ${page + 1}: ${coupons.length} cupons`);
+        
+      } catch (error) {
+        console.error(`❌ Erro ao buscar página ${page + 1}:`, error.message);
+        break;
+      }
+    }
+
+    console.log(`📊 Total de cupons encontrados: ${allCoupons.length}`);
+
+    res.json({
+      total_coupons: allCoupons.length,
+      coupons: allCoupons
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar cupons:', error.message);
+    res.status(500).json({ error: 'Erro ao buscar cupons', message: error.message });
+  }
+});
+
+// ROTA: Buscar melhor produto para um cupom
+app.get('/api/best-product-for-coupon', async (req, res) => {
+  const { token, marca } = req.query;
+
+  if (!token || !marca) {
+    return res.status(400).json({ error: 'Token ou marca não fornecidos' });
+  }
+
+  try {
+    console.log(`🔍 Buscando melhor produto para: ${marca}`);
+
+    const ml = new MercadoLivreAPI(token);
+    const user = await ml.getMe();
+
+    // Buscar produtos de 20 páginas
+    const allListings = [];
+    const PAGES_TO_FETCH = 20;
+    const ITEMS_PER_PAGE = 50;
+
+    for (let page = 0; page < PAGES_TO_FETCH; page++) {
+      try {
+        const listings = await ml.getMyListings(user.id, page * ITEMS_PER_PAGE, ITEMS_PER_PAGE);
+        
+        if (!listings || listings.length === 0) break;
+        
+        allListings.push(...listings);
+        
+      } catch (error) {
+        break;
+      }
+    }
+
+    // Buscar detalhes de cada produto
+    const products = await Promise.all(
+      allListings.map(async (listing) => {
         try {
           const details = await ml.getItemDetails(listing.id);
           return {
@@ -60,17 +209,74 @@ app.get('/api/products', async (req, res) => {
 
     const validProducts = products.filter(p => p !== null);
 
+    // Selecionar o melhor produto
+    const bestProduct = selectBestProduct(validProducts);
+
     res.json({
-      user: user.nickname,
-      total_products: listings.length,
-      products_fetched: validProducts.length,
-      products: validProducts
+      marca: marca,
+      total_products_analyzed: validProducts.length,
+      best_product: bestProduct
     });
 
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao buscar produtos', message: error.message });
+    res.status(500).json({ error: 'Erro ao buscar melhor produto', message: error.message });
   }
 });
+
+// Função: Selecionar o melhor produto baseado em critérios
+function selectBestProduct(products) {
+  if (!products || products.length === 0) return null;
+
+  const scoredProducts = products.map(product => {
+    let score = 0;
+
+    // Rating (0-30 pontos)
+    score += (product.rating / 5) * 30;
+
+    // Quantidade vendida (0-30 pontos)
+    const maxSold = Math.max(...products.map(p => p.sold_quantity));
+    score += (product.sold_quantity / (maxSold || 1)) * 30;
+
+    // Disponibilidade (0-20 pontos)
+    if (product.available_quantity > 0) {
+      score += 20;
+    }
+
+    // Preço (0-20 pontos) - produtos mais baratos ganham mais pontos
+    const minPrice = Math.min(...products.map(p => p.price));
+    score += ((minPrice / (product.price || 1)) * 20);
+
+    return {
+      ...product,
+      score: Math.round(score * 100) / 100
+    };
+  });
+
+  return scoredProducts.sort((a, b) => b.score - a.score)[0];
+}
+
+// Função: Gerar cupons mock para teste
+function generateMockCoupons(page, itemsPerPage) {
+  const marcas = ['Darklab', 'Vog Oficial', 'Sandrini', 'Crocs', 'Bixxis', 'Aheadsports', 'Ptw Pitoweylabs', 'Devintexcosmeticos'];
+  const descontos = ['R$ 80 OFF', 'R$ 40 OFF', '10% OFF', '15% OFF', 'R$ 30 OFF', '5% OFF', 'R$ 50 OFF', '20% OFF'];
+  
+  const coupons = [];
+  const startIndex = page * itemsPerPage;
+
+  for (let i = 0; i < itemsPerPage; i++) {
+    const index = (startIndex + i) % (marcas.length * descontos.length);
+    
+    coupons.push({
+      id: startIndex + i + 1,
+      desconto: descontos[index % descontos.length],
+      marca: marcas[Math.floor(index / descontos.length) % marcas.length],
+      vencimento: new Date(Date.now() + Math.random() * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
+      budget: 'R$ ' + (Math.random() * 1000000).toFixed(2)
+    });
+  }
+
+  return coupons;
+}
 
 app.get('/dashboard', (req, res) => {
   const { token } = req.query;
@@ -251,10 +457,90 @@ app.get('/dashboard', (req, res) => {
           border-top: 1px solid #ecf0f1;
         }
 
+        .coupon-card {
+          background: white;
+          border-left: 4px solid #f39c12;
+          border-radius: 8px;
+          padding: 15px;
+          margin-bottom: 15px;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+        }
+
+        .coupon-info h3 {
+          font-size: 16px;
+          margin-bottom: 5px;
+          color: #2c3e50;
+        }
+
+        .coupon-discount {
+          font-size: 24px;
+          font-weight: bold;
+          color: #e74c3c;
+          margin-bottom: 5px;
+        }
+
+        .coupon-expiry {
+          font-size: 12px;
+          color: #999;
+        }
+
+        .coupon-action {
+          background: #3498db;
+          color: white;
+          padding: 10px 20px;
+          border-radius: 5px;
+          cursor: pointer;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+
+        .coupon-action:hover {
+          background: #2980b9;
+        }
+
+        .best-product-result {
+          background: #e6ffe6;
+          border: 2px solid #27ae60;
+          padding: 15px;
+          border-radius: 5px;
+          margin-top: 10px;
+        }
+
+        .best-product-result h4 {
+          color: #27ae60;
+          margin-bottom: 10px;
+        }
+
+        .score-badge {
+          background: #27ae60;
+          color: white;
+          padding: 5px 10px;
+          border-radius: 3px;
+          font-weight: bold;
+          display: inline-block;
+        }
+
         .loading {
           text-align: center;
           padding: 40px;
           color: #666;
+        }
+
+        .spinner {
+          border: 4px solid #f3f3f3;
+          border-top: 4px solid #3498db;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+          margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
         }
 
         .error {
@@ -294,15 +580,15 @@ app.get('/dashboard', (req, res) => {
 
         <div id="produtos" class="tab-content active">
           <div class="card">
-            <h2>Seus Produtos</h2>
-            <div id="produtos-content" class="loading"><p>Carregando...</p></div>
+            <h2>Seus Produtos (20 páginas)</h2>
+            <div id="produtos-content" class="loading"><div class="spinner"></div><p>Carregando produtos...</p></div>
           </div>
         </div>
 
         <div id="cupons" class="tab-content">
           <div class="card">
-            <h2>Cupons Disponíveis</h2>
-            <div id="cupons-content" class="loading"><p>Carregando...</p></div>
+            <h2>Cupons Disponíveis (20 páginas)</h2>
+            <div id="cupons-content" class="loading"><div class="spinner"></div><p>Carregando cupons...</p></div>
           </div>
         </div>
 
@@ -372,7 +658,8 @@ app.get('/dashboard', (req, res) => {
               return;
             }
             
-            let html = '<div class="grid">';
+            let html = '<p style="margin-bottom: 20px; color: #666;"><strong>Total de produtos:</strong> ' + data.products_fetched + ' (de ' + data.total_products + ' encontrados)</p>';
+            html += '<div class="grid">';
             data.products.forEach(product => {
               html += '<div class="product-card"><h3>' + product.title + '</h3><div class="product-price">R$ ' + product.price.toFixed(2) + '</div><div class="product-stats"><span>Vendidos: ' + product.sold_quantity + '</span><span>Disponíveis: ' + product.available_quantity + '</span></div></div>';
             });
@@ -387,19 +674,57 @@ app.get('/dashboard', (req, res) => {
         async function loadCupons() {
           const content = document.getElementById('cupons-content');
           
-          const cupons = [
-            { desconto: 'R$ 80 OFF', marca: 'Darklab', vencimento: '1 de abril' },
-            { desconto: 'R$ 40 OFF', marca: 'Vog Oficial', vencimento: '17 de março' },
-            { desconto: '10% OFF', marca: 'Sandrini', vencimento: '8 de abril' },
-            { desconto: '15% OFF', marca: 'Crocs', vencimento: '1 de abril' }
-          ];
+          try {
+            const response = await fetch('/api/coupons?token=' + token);
+            const data = await response.json();
+            
+            if (data.error) {
+              content.innerHTML = '<div class="error">Erro: ' + data.error + '</div>';
+              return;
+            }
+            
+            if (!data.coupons || data.coupons.length === 0) {
+              content.innerHTML = '<div class="empty-state"><p>Nenhum cupom encontrado</p></div>';
+              return;
+            }
+            
+            let html = '<p style="margin-bottom: 20px; color: #666;"><strong>Total de cupons:</strong> ' + data.total_coupons + '</p>';
+            data.coupons.forEach(c => {
+              html += '<div class="coupon-card"><div class="coupon-info"><div class="coupon-discount">' + c.desconto + '</div><h3>' + c.marca + '</h3><div class="coupon-expiry">Vence em: ' + c.vencimento + '</div><div class="coupon-expiry">Orçamento: ' + c.budget + '</div></div><button class="coupon-action" onclick="buscarMelhorProduto(\'' + c.marca.replace(/'/g, "\\'") + '\', ' + c.id + ')">Ver Melhor Produto</button><div id="resultado-' + c.id + '"></div></div>';
+            });
+            
+            content.innerHTML = html;
+          } catch (error) {
+            content.innerHTML = '<div class="error">Erro ao carregar cupons: ' + error.message + '</div>';
+          }
+        }
+
+        async function buscarMelhorProduto(marca, cupomId) {
+          const resultDiv = document.getElementById('resultado-' + cupomId);
+          resultDiv.innerHTML = '<div class="loading" style="padding: 10px;"><div class="spinner" style="width: 20px; height: 20px;"></div><p>Buscando melhor produto...</p></div>';
           
-          let html = '';
-          cupons.forEach(c => {
-            html += '<div style="border-left: 4px solid #f39c12; padding: 15px; margin-bottom: 10px;"><strong>' + c.desconto + '</strong> - ' + c.marca + ' (Vence: ' + c.vencimento + ')</div>';
-          });
-          
-          content.innerHTML = html;
+          try {
+            const response = await fetch('/api/best-product-for-coupon?token=' + token + '&marca=' + encodeURIComponent(marca));
+            const data = await response.json();
+            
+            if (data.error) {
+              resultDiv.innerHTML = '<div class="error">Erro: ' + data.error + '</div>';
+              return;
+            }
+            
+            const best = data.best_product;
+            let html = '<div class="best-product-result"><h4>✅ Melhor Produto Selecionado</h4>';
+            html += '<p><strong>' + best.title + '</strong></p>';
+            html += '<p>Preço: <strong>R$ ' + best.price.toFixed(2) + '</strong></p>';
+            html += '<p>Vendidos: ' + best.sold_quantity + ' | Disponíveis: ' + best.available_quantity + '</p>';
+            html += '<p>Rating: ⭐ ' + best.rating + '</p>';
+            html += '<p>Score de Viabilidade: <span class="score-badge">' + best.score + '/100</span></p>';
+            html += '</div>';
+            
+            resultDiv.innerHTML = html;
+          } catch (error) {
+            resultDiv.innerHTML = '<div class="error">Erro: ' + error.message + '</div>';
+          }
         }
 
         async function loadMetricas() {
