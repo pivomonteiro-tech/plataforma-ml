@@ -36,6 +36,7 @@ app.get('/api/products', async (req, res) => {
 
   try {
     console.log('📦 Iniciando busca de produtos...');
+    console.log('Token:', token.substring(0, 30) + '...');
 
     const ml = new MercadoLivreAPI(token);
     const user = await ml.getMe();
@@ -67,6 +68,16 @@ app.get('/api/products', async (req, res) => {
 
     console.log(`📊 Total de produtos encontrados: ${allListings.length}`);
 
+    if (allListings.length === 0) {
+      console.log('⚠️ AVISO: Nenhum produto encontrado no Mercado Livre!');
+      return res.json({
+        user: user.nickname,
+        total_products: 0,
+        products_fetched: 0,
+        products: []
+      });
+    }
+
     const products = await Promise.all(
       allListings.map(async (listing) => {
         try {
@@ -81,13 +92,15 @@ app.get('/api/products', async (req, res) => {
             rating: details.rating || 0
           };
         } catch (error) {
-          console.error(`Erro ao buscar produto ${listing.id}`);
+          console.error(`Erro ao buscar produto ${listing.id}:`, error.message);
           return null;
         }
       })
     );
 
     const validProducts = products.filter(p => p !== null);
+
+    console.log(`✅ Produtos válidos: ${validProducts.length}`);
 
     res.json({
       user: user.nickname,
@@ -98,6 +111,7 @@ app.get('/api/products', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erro ao buscar produtos:', error.message);
+    console.error('Stack:', error.stack);
     res.status(500).json({ error: 'Erro ao buscar produtos', message: error.message });
   }
 });
@@ -175,8 +189,20 @@ app.get('/api/best-product-for-coupon', async (req, res) => {
         allListings.push(...listings);
         
       } catch (error) {
+        console.error(`Erro ao buscar página ${page + 1}:`, error.message);
         break;
       }
+    }
+
+    console.log(`📊 Total de produtos para análise: ${allListings.length}`);
+
+    if (allListings.length === 0) {
+      console.log('⚠️ AVISO: Nenhum produto encontrado!');
+      return res.json({
+        marca: marca,
+        total_products_analyzed: 0,
+        best_product: null
+      });
     }
 
     const products = await Promise.all(
@@ -200,7 +226,11 @@ app.get('/api/best-product-for-coupon', async (req, res) => {
 
     const validProducts = products.filter(p => p !== null);
 
+    console.log(`✅ Produtos válidos para análise: ${validProducts.length}`);
+
     const bestProduct = selectBestProduct(validProducts);
+
+    console.log(`✅ Melhor produto selecionado:`, bestProduct ? bestProduct.title : 'Nenhum');
 
     res.json({
       marca: marca,
@@ -209,6 +239,8 @@ app.get('/api/best-product-for-coupon', async (req, res) => {
     });
 
   } catch (error) {
+    console.error('❌ Erro ao buscar melhor produto:', error.message);
+    console.error('Stack:', error.stack);
     res.status(500).json({ error: 'Erro ao buscar melhor produto', message: error.message });
   }
 });
