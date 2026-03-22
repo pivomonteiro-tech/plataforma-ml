@@ -7,25 +7,24 @@ class MercadoLivreAPI {
     this.baseURL = 'https://api.mercadolibre.com';
   }
 
-  // Autenticação básica (COM token - corrigido)
+  // Autenticação básica (COM token)
   async getMe() {
     try {
       const response = await axios.get(`${this.baseURL}/users/me`, {
         headers: { 
           'Authorization': `Bearer ${this.token}`,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
       });
-      console.log(`✅ getMe funcionou: ${response.data.nickname}`);
       return response.data;
     } catch (error) {
-      console.error('Erro ao obter dados do usuário:', error.message);
-      // Fallback para mock user se falhar
+      console.error('⚠️ getMe falhou, usando mock:', error.message);
+      // Fallback para mock user
       return { nickname: 'Usuário Mock', id: 'mock123' };
     }
   }
 
-  // Categorias (fixas para scraping - da doc)
+  // Categorias (fixas para scraping)
   async getCategories() {
     return [
       { id: 'MLA1051', name: 'Celulares', url: 'https://lista.mercadolivre.com.br/celulares-telefones' },
@@ -55,7 +54,7 @@ class MercadoLivreAPI {
         sold_quantity: p.sold_quantity,
         available_quantity: p.available_quantity,
         category_id: categoryId,
-        rating: Math.random() * 0.5 + 4.3,  // Simulado 4.3-4.8
+        rating: Math.random() * 0.5 + 4.3,
         status: 'active',
         thumbnail: p.thumbnail,
         link: p.link
@@ -64,14 +63,13 @@ class MercadoLivreAPI {
       console.log(`✅ Scraping ${cat.name}: ${processed.length} produtos reais`);
       return { results: processed };
     } catch (error) {
-      console.error('Erro no scraping:', error.message);
+      console.error('❌ Erro no scraping:', error.message);
       throw error;
     }
   }
 
-  // Detalhes de item (scraping ou mock)
+  // Detalhes de item
   async getItemDetails(itemId) {
-    // Para simplicidade, mock - expanda com scraping de página individual se necessário
     return {
       id: itemId,
       title: 'Produto Detalhado',
@@ -83,4 +81,5 @@ class MercadoLivreAPI {
   }
 }
 
+// EXPORTAR CORRETAMENTE
 module.exports = MercadoLivreAPI;

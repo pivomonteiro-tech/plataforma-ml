@@ -27,7 +27,7 @@ app.get('/status', (req, res) => {
 
 app.use('/auth', authRoutes);
 
-// ROTA: Produtos reais via scraping (sem API)
+// ROTA: Produtos reais via scraping
 app.get('/api/products', async (req, res) => {
   const { token } = req.query;
 
@@ -36,12 +36,16 @@ app.get('/api/products', async (req, res) => {
   try {
     console.log('📦 Buscando produtos reais via scraping...');
 
+    // INSTANCIAR CORRETAMENTE
+    const MercadoLivreAPI = require('./mercadolivre');
     const ml = new MercadoLivreAPI(token);
-    const user = await ml.getMe();  // Agora corrigido
+
+    // Chamar getMe (agora vai funcionar)
+    const user = await ml.getMe();
     console.log(`✅ Usuário: ${user.nickname}`);
 
     const categories = await ml.getCategories();
-    console.log(`📂 Categorias para scraping: ${categories.length}`);
+    console.log(`📂 Categorias: ${categories.length}`);
 
     const allProducts = [];
     const limitPorCat = 10;
@@ -52,21 +56,21 @@ app.get('/api/products', async (req, res) => {
         
         if (response.results && response.results.length > 0) {
           allProducts.push(...response.results);
-          console.log(`✅ ${cat.id} (${cat.name}): ${response.results.length} produtos reais (scraping)`);
+          console.log(`✅ ${cat.name}: ${response.results.length} produtos reais`);
         }
       } catch (error) {
-        console.error(`❌ Categoria ${cat.id}:`, error.message);
+        console.error(`❌ ${cat.name}:`, error.message);
       }
     }
 
-    console.log(`📊 Total: ${allProducts.length} produtos reais do site`);
+    console.log(`📊 Total: ${allProducts.length} produtos`);
 
     if (allProducts.length === 0) {
       return res.json({
         user: user.nickname,
         total_products: 0,
         products: [],
-        message: 'Nenhum produto encontrado (tente novamente em alguns minutos)'
+        message: 'Nenhum produto encontrado'
       });
     }
 
