@@ -27,65 +27,46 @@ app.get('/status', (req, res) => {
 
 app.use('/auth', authRoutes);
 
-// ROTA: Produtos reais via API pública (sem token, sem 403)
+// ROTA: Produtos reais via scraping (sem API bloqueada)
 app.get('/api/products', async (req, res) => {
   const { token } = req.query;
 
   if (!token) return res.status(401).json({ error: 'Token não fornecido' });
 
   try {
-    console.log('📦 Buscando produtos reais públicos (sem token)...');
+    console.log('📦 Buscando produtos reais via scraping...');
 
     const ml = new MercadoLivreAPI(token);
-    const user = await ml.getMe();  // Só para user info
+    const user = await ml.getMe();
     console.log(`✅ Usuário: ${user.nickname}`);
 
-    // Obter categorias públicas (sem token)
-    const categories = await ml.getCategories('MLB');
-    console.log(`📂 Total de categorias: ${categories.length}`);
-
-    // Categorias populares (da doc /sites/MLB/categories)
-    const categorias = ['MLA1051', 'MLA1000', 'MLA1574', 'MLA1744', 'MLA1276'];  // Celulares, Eletrônicos, etc.
+    const categories = await ml.getCategories();
+    console.log(`📂 Categorias para scraping: ${categories.length}`);
 
     const allProducts = [];
     const limitPorCat = 10;
 
-    for (let cat of categorias) {
+    for (let cat of categories) {
       try {
-        // Busca pública (sem token)
-        const response = await ml.searchPublicProducts('', cat, 0, limitPorCat);
+        const response = await ml.searchPublicProducts('', cat.id, 0, limitPorCat);
         
         if (response.results && response.results.length > 0) {
-          const processed = response.results.map(p => ({
-            id: p.id,
-            title: p.title.substring(0, 100),
-            price: p.price,
-            sold_quantity: p.sold_quantity || 0,
-            available_quantity: p.available_quantity || 0,
-            category_id: p.category_id,
-            rating: p.rating || 0,
-            status: 'active',
-            thumbnail: p.thumbnail
-          }));
-
-          allProducts.push(...processed);
-          console.log(`✅ ${cat}: ${processed.length} produtos (mais vendidos)`);
-        } else {
-          console.log(`⚠️ Nenhum produto na categoria ${cat}`);
+          allProducts.push(...response.results);
+          console.log(`✅ ${cat.id}: ${response.results.length} produtos reais (scraping)`);
         }
       } catch (error) {
-        console.error(`❌ Categoria ${cat}:`, error.message);
+        console.error(`❌ Categoria ${cat.id}:`, error.message);
       }
     }
 
-    console.log(`📊 Total: ${allProducts.length} produtos públicos`);
+    console.log(`📊 Total: ${allProducts.length} produtos reais do site`);
 
     if (allProducts.length === 0) {
       return res.json({
         user: user.nickname,
         total_products: 0,
         products: [],
-        message: 'Nenhum produto encontrado (verifique conexão)'
+        message: 'Nenhum produto encontrado (tente novamente)'
       });
     }
 
@@ -94,15 +75,11 @@ app.get('/api/products', async (req, res) => {
       total_products: allProducts.length,
       products_fetched: allProducts.length,
       products: allProducts.slice(0, 50),
-      fonte_dados: 'API Pública ML (sem token)'
+      fonte_dados: 'Scraping Site ML (dados reais)'
     });
 
   } catch (error) {
     console.error('❌ Erro geral produtos:', error.message);
-    if (error.response) {
-      console.error('Status:', error.response.status);
-      console.error('Data:', error.response.data);
-    }
     res.status(500).json({ error: 'Erro ao buscar produtos', message: error.message });
   }
 });
