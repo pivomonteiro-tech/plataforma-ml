@@ -72,97 +72,6 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// NOVA ROTA: Buscar produtos de um cupom e selecionar o melhor
-app.get('/api/cupom-products', async (req, res) => {
-  const { token, cupom_id, marca } = req.query;
-
-  if (!token || !marca) {
-    return res.status(400).json({ error: 'Token ou marca não fornecidos' });
-  }
-
-  try {
-    const ml = new MercadoLivreAPI(token);
-    
-    // Buscar produtos da marca/cupom
-    console.log(`🔍 Buscando produtos de: ${marca}`);
-    
-    // Simular busca de produtos (em produção, seria uma busca real na API)
-    const mockProducts = [
-      {
-        id: 'MLB123',
-        title: `Produto Premium de ${marca}`,
-        price: 299.90,
-        sold_quantity: 1250,
-        available_quantity: 45,
-        rating: 4.8
-      },
-      {
-        id: 'MLB124',
-        title: `Produto Padrão de ${marca}`,
-        price: 149.90,
-        sold_quantity: 850,
-        available_quantity: 120,
-        rating: 4.5
-      },
-      {
-        id: 'MLB125',
-        title: `Produto Econômico de ${marca}`,
-        price: 79.90,
-        sold_quantity: 2100,
-        available_quantity: 300,
-        rating: 4.3
-      }
-    ];
-
-    // Selecionar o melhor produto
-    const bestProduct = selectBestProduct(mockProducts);
-
-    res.json({
-      marca: marca,
-      total_products: mockProducts.length,
-      best_product: bestProduct,
-      all_products: mockProducts
-    });
-
-  } catch (error) {
-    res.status(500).json({ error: 'Erro ao buscar produtos do cupom', message: error.message });
-  }
-});
-
-// Função: Selecionar o melhor produto baseado em critérios
-function selectBestProduct(products) {
-  if (!products || products.length === 0) return null;
-
-  // Calcular score para cada produto
-  const scoredProducts = products.map(product => {
-    let score = 0;
-
-    // Rating (0-30 pontos)
-    score += (product.rating / 5) * 30;
-
-    // Quantidade vendida (0-30 pontos)
-    const maxSold = Math.max(...products.map(p => p.sold_quantity));
-    score += (product.sold_quantity / maxSold) * 30;
-
-    // Disponibilidade (0-20 pontos)
-    if (product.available_quantity > 0) {
-      score += 20;
-    }
-
-    // Preço (0-20 pontos) - produtos mais baratos ganham mais pontos
-    const minPrice = Math.min(...products.map(p => p.price));
-    score += ((minPrice / product.price) * 20);
-
-    return {
-      ...product,
-      score: Math.round(score * 100) / 100
-    };
-  });
-
-  // Ordenar por score e retornar o melhor
-  return scoredProducts.sort((a, b) => b.score - a.score)[0];
-}
-
 app.get('/dashboard', (req, res) => {
   const { token } = req.query;
   
@@ -175,32 +84,193 @@ app.get('/dashboard', (req, res) => {
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>Dashboard</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Dashboard - Plataforma ML</title>
       <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-        .header { background: #3498db; color: white; padding: 20px; border-radius: 5px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
-        .tab-button { padding: 10px 20px; background: none; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-size: 14px; font-weight: 600; color: #666; }
-        .tab-button.active { color: #3498db; border-bottom-color: #3498db; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .card { background: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
-        .product-card { background: white; border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
-        .product-price { font-size: 18px; font-weight: bold; color: #27ae60; }
-        .coupon-card { background: white; border-left: 4px solid #f39c12; padding: 15px; margin-bottom: 15px; border-radius: 5px; }
-        .coupon-discount { font-size: 24px; font-weight: bold; color: #e74c3c; }
-        .coupon-action { background: #3498db; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px; }
-        .coupon-action:hover { background: #2980b9; }
-        .best-product { background: #e6ffe6; border: 2px solid #27ae60; padding: 15px; border-radius: 5px; margin-top: 10px; }
-        .best-product h4 { color: #27ae60; margin-bottom: 10px; }
-        .score-badge { background: #27ae60; color: white; padding: 5px 10px; border-radius: 3px; font-weight: bold; }
-        button { padding: 10px 20px; background: #27ae60; color: white; border: none; cursor: pointer; border-radius: 5px; }
-        button:hover { background: #229954; }
-        .error { background: #ffe6e6; color: #c0392b; padding: 15px; border-radius: 5px; }
-        .loading { text-align: center; padding: 40px; }
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: #f5f5f5;
+          color: #333;
+        }
+
+        .container {
+          max-width: 1400px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+
+        .header {
+          background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+          color: white;
+          padding: 30px;
+          border-radius: 8px;
+          margin-bottom: 30px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+          font-size: 28px;
+          margin-bottom: 10px;
+        }
+
+        .header p {
+          font-size: 14px;
+          opacity: 0.9;
+        }
+
+        .header-actions {
+          display: flex;
+          gap: 10px;
+        }
+
+        button {
+          padding: 10px 20px;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 600;
+          transition: all 0.3s ease;
+        }
+
+        .btn-logout {
+          background: #e74c3c;
+          color: white;
+        }
+
+        .btn-logout:hover {
+          background: #c0392b;
+        }
+
+        .tabs {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 30px;
+          border-bottom: 2px solid #ddd;
+          flex-wrap: wrap;
+        }
+
+        .tab-button {
+          padding: 12px 24px;
+          background: none;
+          border: none;
+          border-bottom: 3px solid transparent;
+          cursor: pointer;
+          font-size: 16px;
+          font-weight: 600;
+          color: #666;
+          transition: all 0.3s ease;
+        }
+
+        .tab-button:hover {
+          color: #3498db;
+        }
+
+        .tab-button.active {
+          color: #3498db;
+          border-bottom-color: #3498db;
+        }
+
+        .tab-content {
+          display: none;
+          animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+          display: block;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .card {
+          background: white;
+          border-radius: 8px;
+          padding: 20px;
+          margin-bottom: 20px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .card h2 {
+          font-size: 20px;
+          margin-bottom: 15px;
+          color: #2c3e50;
+        }
+
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+          gap: 20px;
+          margin-bottom: 20px;
+        }
+
+        .product-card {
+          background: white;
+          border: 1px solid #ecf0f1;
+          border-radius: 8px;
+          padding: 15px;
+          transition: all 0.3s ease;
+        }
+
+        .product-card:hover {
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          transform: translateY(-4px);
+        }
+
+        .product-card h3 {
+          font-size: 16px;
+          margin-bottom: 10px;
+          color: #2c3e50;
+          line-height: 1.4;
+        }
+
+        .product-price {
+          font-size: 18px;
+          font-weight: bold;
+          color: #27ae60;
+          margin-bottom: 10px;
+        }
+
+        .product-stats {
+          display: flex;
+          justify-content: space-between;
+          font-size: 13px;
+          color: #999;
+          padding-top: 10px;
+          border-top: 1px solid #ecf0f1;
+        }
+
+        .loading {
+          text-align: center;
+          padding: 40px;
+          color: #666;
+        }
+
+        .error {
+          background: #ffe6e6;
+          border: 1px solid #ffcccc;
+          color: #c0392b;
+          padding: 15px;
+          border-radius: 5px;
+          margin-bottom: 20px;
+        }
+
+        .empty-state {
+          text-align: center;
+          padding: 40px;
+          color: #999;
+        }
       </style>
     </head>
     <body>
@@ -208,9 +278,11 @@ app.get('/dashboard', (req, res) => {
         <div class="header">
           <div>
             <h1>Dashboard</h1>
-            <p id="user-info">Carregando...</p>
+            <p id="user-info">Carregando informações do usuário...</p>
           </div>
-          <button onclick="logout()" style="background: #e74c3c;">Sair</button>
+          <div class="header-actions">
+            <button class="btn-logout" onclick="logout()">Sair</button>
+          </div>
         </div>
 
         <div class="tabs">
@@ -229,21 +301,21 @@ app.get('/dashboard', (req, res) => {
 
         <div id="cupons" class="tab-content">
           <div class="card">
-            <h2>Cupons com Melhor Produto</h2>
+            <h2>Cupons Disponíveis</h2>
             <div id="cupons-content" class="loading"><p>Carregando...</p></div>
           </div>
         </div>
 
         <div id="metricas" class="tab-content">
           <div class="card">
-            <h2>Métricas</h2>
+            <h2>Suas Métricas</h2>
             <div id="metricas-content" class="loading"><p>Carregando...</p></div>
           </div>
         </div>
 
         <div id="ganhos" class="tab-content">
           <div class="card">
-            <h2>Ganhos</h2>
+            <h2>Estimativa de Ganhos</h2>
             <div id="ganhos-content" class="loading"><p>Carregando...</p></div>
           </div>
         </div>
@@ -252,23 +324,40 @@ app.get('/dashboard', (req, res) => {
       <script>
         const token = '${token}';
 
-        function switchTab(name) {
-          document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-          document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
-          document.getElementById(name).classList.add('active');
+        function switchTab(tabName) {
+          document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+          });
+          
+          document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+          });
+          
+          document.getElementById(tabName).classList.add('active');
           event.target.classList.add('active');
-          loadTab(name);
+          
+          loadTabData(tabName);
         }
 
-        async function loadTab(name) {
-          if (name === 'produtos') loadProdutos();
-          else if (name === 'cupons') loadCupons();
-          else if (name === 'metricas') loadMetricas();
-          else if (name === 'ganhos') loadGanhos();
+        async function loadTabData(tabName) {
+          try {
+            if (tabName === 'produtos') {
+              await loadProdutos();
+            } else if (tabName === 'cupons') {
+              await loadCupons();
+            } else if (tabName === 'metricas') {
+              await loadMetricas();
+            } else if (tabName === 'ganhos') {
+              await loadGanhos();
+            }
+          } catch (error) {
+            console.error('Erro ao carregar dados:', error);
+          }
         }
 
         async function loadProdutos() {
           const content = document.getElementById('produtos-content');
+          
           try {
             const response = await fetch('/api/products?token=' + token);
             const data = await response.json();
@@ -279,18 +368,19 @@ app.get('/dashboard', (req, res) => {
             }
             
             if (!data.products || data.products.length === 0) {
-              content.innerHTML = '<p>Nenhum produto encontrado</p>';
+              content.innerHTML = '<div class="empty-state"><p>Nenhum produto encontrado</p></div>';
               return;
             }
             
             let html = '<div class="grid">';
-            data.products.forEach(p => {
-              html += '<div class="product-card"><h3>' + p.title + '</h3><div class="product-price">R$ ' + p.price.toFixed(2) + '</div><p>Vendidos: ' + p.sold_quantity + '</p><p>Disponíveis: ' + p.available_quantity + '</p></div>';
+            data.products.forEach(product => {
+              html += '<div class="product-card"><h3>' + product.title + '</h3><div class="product-price">R$ ' + product.price.toFixed(2) + '</div><div class="product-stats"><span>Vendidos: ' + product.sold_quantity + '</span><span>Disponíveis: ' + product.available_quantity + '</span></div></div>';
             });
             html += '</div>';
+            
             content.innerHTML = html;
           } catch (error) {
-            content.innerHTML = '<div class="error">Erro: ' + error.message + '</div>';
+            content.innerHTML = '<div class="error">Erro ao carregar produtos: ' + error.message + '</div>';
           }
         }
 
@@ -298,46 +388,18 @@ app.get('/dashboard', (req, res) => {
           const content = document.getElementById('cupons-content');
           
           const cupons = [
-            { id: 1, desconto: 'R$ 80 OFF', marca: 'Darklab', vencimento: '1 de abril', budget: 'R$ 864.320,96' },
-            { id: 2, desconto: 'R$ 40 OFF', marca: 'Vog Oficial', vencimento: '17 de março', budget: 'R$ 967.660' },
-            { id: 3, desconto: '10% OFF', marca: 'Sandrini', vencimento: '8 de abril', budget: 'R$ 60.612,82' },
-            { id: 4, desconto: '15% OFF', marca: 'Crocs', vencimento: '1 de abril', budget: 'R$ 1.066.600' }
+            { desconto: 'R$ 80 OFF', marca: 'Darklab', vencimento: '1 de abril' },
+            { desconto: 'R$ 40 OFF', marca: 'Vog Oficial', vencimento: '17 de março' },
+            { desconto: '10% OFF', marca: 'Sandrini', vencimento: '8 de abril' },
+            { desconto: '15% OFF', marca: 'Crocs', vencimento: '1 de abril' }
           ];
           
           let html = '';
           cupons.forEach(c => {
-            html += '<div class="coupon-card"><div class="coupon-discount">' + c.desconto + '</div><h3>' + c.marca + '</h3><p>Vence em: ' + c.vencimento + '</p><p>Orçamento: ' + c.budget + '</p><button class="coupon-action" onclick="buscarMelhorProduto(\'' + c.marca + '\', ' + c.id + ')">Ver Melhor Produto</button><div id="resultado-' + c.id + '"></div></div>';
+            html += '<div style="border-left: 4px solid #f39c12; padding: 15px; margin-bottom: 10px;"><strong>' + c.desconto + '</strong> - ' + c.marca + ' (Vence: ' + c.vencimento + ')</div>';
           });
           
           content.innerHTML = html;
-        }
-
-        async function buscarMelhorProduto(marca, cupomId) {
-          const resultDiv = document.getElementById('resultado-' + cupomId);
-          resultDiv.innerHTML = '<p style="text-align: center;">Buscando melhor produto...</p>';
-          
-          try {
-            const response = await fetch('/api/cupom-products?token=' + token + '&marca=' + encodeURIComponent(marca) + '&cupom_id=' + cupomId);
-            const data = await response.json();
-            
-            if (data.error) {
-              resultDiv.innerHTML = '<div class="error">Erro: ' + data.error + '</div>';
-              return;
-            }
-            
-            const best = data.best_product;
-            let html = '<div class="best-product"><h4>✅ Melhor Produto Selecionado</h4>';
-            html += '<p><strong>' + best.title + '</strong></p>';
-            html += '<p>Preço: <strong>R$ ' + best.price.toFixed(2) + '</strong></p>';
-            html += '<p>Vendidos: ' + best.sold_quantity + ' | Disponíveis: ' + best.available_quantity + '</p>';
-            html += '<p>Rating: ⭐ ' + best.rating + '</p>';
-            html += '<p>Score de Viabilidade: <span class="score-badge">' + best.score + '/100</span></p>';
-            html += '</div>';
-            
-            resultDiv.innerHTML = html;
-          } catch (error) {
-            resultDiv.innerHTML = '<div class="error">Erro: ' + error.message + '</div>';
-          }
         }
 
         async function loadMetricas() {
@@ -354,7 +416,20 @@ app.get('/dashboard', (req, res) => {
           window.location.href = '/auth/login';
         }
 
-        window.addEventListener('load', loadProdutos);
+        window.addEventListener('load', async () => {
+          try {
+            const response = await fetch('/api/products?token=' + token);
+            const data = await response.json();
+            
+            if (data.user) {
+              document.getElementById('user-info').textContent = 'Bem-vindo, ' + data.user + '! 👋';
+            }
+            
+            await loadProdutos();
+          } catch (error) {
+            console.error('Erro ao carregar dados iniciais:', error);
+          }
+        });
       </script>
     </body>
     </html>
