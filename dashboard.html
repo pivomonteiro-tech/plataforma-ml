@@ -15,6 +15,8 @@
     button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s ease; }
     .btn-logout { background: #e74c3c; color: white; }
     .btn-logout:hover { background: #c0392b; }
+    .btn-export { background: #27ae60; color: white; margin-left: 10px; }
+    .btn-export:hover { background: #229954; }
     .tabs { display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 2px solid #ddd; flex-wrap: wrap; }
     .tab-button { padding: 12px 24px; background: none; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-size: 16px; font-weight: 600; color: #666; transition: all 0.3s ease; }
     .tab-button:hover { color: #3498db; }
@@ -41,6 +43,20 @@
     .best-product-result { background: #e6ffe6; border: 2px solid #27ae60; padding: 15px; border-radius: 5px; margin-top: 10px; }
     .best-product-result h4 { color: #27ae60; margin-bottom: 10px; }
     .score-badge { background: #27ae60; color: white; padding: 5px 10px; border-radius: 3px; font-weight: bold; display: inline-block; }
+    .filters { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; }
+    .filter-group { display: flex; flex-direction: column; gap: 5px; }
+    .filter-group label { font-weight: 600; color: #2c3e50; font-size: 14px; }
+    .filter-group select, .filter-group input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+    .filter-group button { margin-top: 0; }
+    .table-container { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    th { background: #3498db; color: white; padding: 12px; text-align: left; font-weight: 600; }
+    td { padding: 12px; border-bottom: 1px solid #ecf0f1; }
+    tr:hover { background: #f9f9f9; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 600; }
+    .badge-success { background: #d4edda; color: #155724; }
+    .badge-warning { background: #fff3cd; color: #856404; }
+    .badge-danger { background: #f8d7da; color: #721c24; }
   </style>
 </head>
 <body>
@@ -58,6 +74,7 @@
     <div class="tabs">
       <button class="tab-button active" onclick="switchTab('produtos')">Produtos</button>
       <button class="tab-button" onclick="switchTab('cupons')">Cupons</button>
+      <button class="tab-button" onclick="switchTab('relatorio')">Relatório</button>
       <button class="tab-button" onclick="switchTab('metricas')">Métricas</button>
       <button class="tab-button" onclick="switchTab('ganhos')">Ganhos</button>
     </div>
@@ -73,6 +90,31 @@
       <div class="card">
         <h2>Cupons Disponíveis (20 páginas)</h2>
         <div id="cupons-content" class="loading"><p>Carregando...</p></div>
+      </div>
+    </div>
+
+    <div id="relatorio" class="tab-content">
+      <div class="card">
+        <h2>Relatório Completo de Cupons + Produtos</h2>
+        
+        <div class="filters">
+          <div class="filter-group">
+            <label>Ordenar por:</label>
+            <select id="ordenar-por" onchange="carregarRelatorio()">
+              <option value="score">Score de Viabilidade</option>
+              <option value="ganho">Potencial de Ganho</option>
+              <option value="desconto">Desconto</option>
+              <option value="vendidos">Mais Vendidos</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Desconto Mínimo (%):</label>
+            <input type="number" id="filtro-desconto" value="0" min="0" max="100" onchange="carregarRelatorio()">
+          </div>
+          <button class="btn-export" onclick="exportarCSV()">📥 Exportar CSV</button>
+        </div>
+
+        <div id="relatorio-content" class="loading"><p>Carregando relatório...</p></div>
       </div>
     </div>
 
@@ -105,6 +147,7 @@
     async function loadTabData(tabName) {
       if (tabName === 'produtos') await loadProdutos();
       else if (tabName === 'cupons') await loadCupons();
+      else if (tabName === 'relatorio') await carregarRelatorio();
       else if (tabName === 'metricas') await loadMetricas();
       else if (tabName === 'ganhos') await loadGanhos();
     }
@@ -164,6 +207,53 @@
       } catch (error) {
         resultDiv.innerHTML = '<div class="error" style="margin-top: 10px;">Erro: ' + error.message + '</div>';
       }
+    }
+
+    async function carregarRelatorio() {
+      const content = document.getElementById('relatorio-content');
+      const ordenarPor = document.getElementById('ordenar-por').value;
+      const filtroDesconto = document.getElementById('filtro-desconto').value;
+
+      content.innerHTML = '<div class="loading"><p>Gerando relatório...</p></div>';
+
+      try {
+        const response = await fetch('/api/relatorio-completo?token=' + token + '&ordenar_por=' + ordenarPor + '&filtro_desconto=' + filtroDesconto);
+        const data = await response.json();
+
+        if (data.error) { content.innerHTML = '<div class="error">Erro: ' + data.error + '</div>'; return; }
+        if (!data.relatorio || data.relatorio.length === 0) { content.innerHTML = '<div class="empty-state"><p>Nenhum cupom encontrado com os filtros aplicados</p></div>'; return; }
+
+        let html = '<p style="margin-bottom: 20px; color: #666;"><strong>Total de cupons:</strong> ' + data.total_cupons + ' | <strong>Filtrados:</strong> ' + data.cupons_filtrados + '</p>';
+        html += '<div class="table-container"><table>';
+        html += '<thead><tr><th>Marca</th><th>Desconto</th><th>Vencimento</th><th>Produto</th><th>Preço</th><th>Vendidos</th><th>Rating</th><th>Score</th><th>Potencial Ganho</th></tr></thead>';
+        html += '<tbody>';
+
+        data.relatorio.forEach(item => {
+          const scoreBadge = item.score_viabilidade >= 80 ? 'badge-success' : item.score_viabilidade >= 60 ? 'badge-warning' : 'badge-danger';
+          html += '<tr>';
+          html += '<td><strong>' + item.marca + '</strong></td>';
+          html += '<td><span class="badge badge-success">' + item.desconto + '</span></td>';
+          html += '<td>' + item.vencimento + '</td>';
+          html += '<td>' + item.produto_nome + '</td>';
+          html += '<td>R$ ' + item.produto_preco.toFixed(2) + '</td>';
+          html += '<td>' + item.produto_vendidos + '</td>';
+          html += '<td>⭐ ' + item.produto_rating + '</td>';
+          html += '<td><span class="badge ' + scoreBadge + '">' + item.score_viabilidade + '/100</span></td>';
+          html += '<td><strong>R$ ' + item.potencial_ganho.toFixed(2) + '</strong></td>';
+          html += '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+        content.innerHTML = html;
+      } catch (error) {
+        content.innerHTML = '<div class="error">Erro ao carregar relatório: ' + error.message + '</div>';
+      }
+    }
+
+    async function exportarCSV() {
+      const ordenarPor = document.getElementById('ordenar-por').value;
+      const filtroDesconto = document.getElementById('filtro-desconto').value;
+      window.location.href = '/api/relatorio-csv?token=' + token + '&ordenar_por=' + ordenarPor + '&filtro_desconto=' + filtroDesconto;
     }
 
     async function loadMetricas() {

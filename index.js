@@ -163,6 +163,178 @@ app.get('/api/best-product-for-coupon', async (req, res) => {
   }
 });
 
+// ROTA: Relatório completo com todos os cupons e melhores produtos
+app.get('/api/relatorio-completo', async (req, res) => {
+  const { token, ordenar_por = 'score', filtro_desconto = 0 } = req.query;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Token não fornecido' });
+  }
+
+  try {
+    console.log('📊 Gerando relatório completo...');
+
+    const ml = new MercadoLivreAPI(token);
+    const user = await ml.getMe();
+
+    // Gerar cupons
+    const allCoupons = [];
+    const PAGES_TO_FETCH = 20;
+    const COUPONS_PER_PAGE = 15;
+
+    for (let page = 0; page < PAGES_TO_FETCH; page++) {
+      const coupons = generateMockCoupons(page, COUPONS_PER_PAGE);
+      if (!coupons || coupons.length === 0) break;
+      allCoupons.push(...coupons);
+    }
+
+    console.log(`📊 Total de cupons: ${allCoupons.length}`);
+
+    // Processar cada cupom e encontrar melhor produto
+    const relatorio = allCoupons.map(cupom => {
+      const bestProduct = selectBestProduct(produtosDisponiveis);
+      
+      // Calcular potencial de ganho
+      const descontoNumerico = parseInt(cupom.desconto.replace(/\D/g, ''));
+      const potencialGanho = (bestProduct.price * descontoNumerico / 100) * bestProduct.sold_quantity;
+
+      return {
+        cupom_id: cupom.id,
+        marca: cupom.marca,
+        desconto: cupom.desconto,
+        desconto_numerico: descontoNumerico,
+        vencimento: cupom.vencimento,
+        orcamento: parseFloat(cupom.budget.replace(/[^\d,]/g, '').replace(',', '.')),
+        produto_id: bestProduct.id,
+        produto_nome: bestProduct.title,
+        produto_preco: bestProduct.price,
+        produto_vendidos: bestProduct.sold_quantity,
+        produto_disponivel: bestProduct.available_quantity,
+        produto_rating: bestProduct.rating,
+        score_viabilidade: bestProduct.score,
+        potencial_ganho: Math.round(potencialGanho * 100) / 100
+      };
+    });
+
+    // Aplicar filtros
+    let relatorioFiltrado = relatorio.filter(item => item.desconto_numerico >= filtro_desconto);
+
+    // Aplicar ordenação
+    if (ordenar_por === 'score') {
+      relatorioFiltrado.sort((a, b) => b.score_viabilidade - a.score_viabilidade);
+    } else if (ordenar_por === 'ganho') {
+      relatorioFiltrado.sort((a, b) => b.potencial_ganho - a.potencial_ganho);
+    } else if (ordenar_por === 'desconto') {
+      relatorioFiltrado.sort((a, b) => b.desconto_numerico - a.desconto_numerico);
+    } else if (ordenar_por === 'vendidos') {
+      relatorioFiltrado.sort((a, b) => b.produto_vendidos - a.produto_vendidos);
+    }
+
+    console.log(`✅ Relatório gerado com ${relatorioFiltrado.length} itens`);
+
+    res.json({
+      usuario: user.nickname,
+      total_cupons: allCoupons.length,
+      cupons_filtrados: relatorioFiltrado.length,
+      relatorio: relatorioFiltrado
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao gerar relatório:', error.message);
+    res.status(500).json({ error: 'Erro ao gerar relatório', message: error.message });
+  }
+});
+
+// ROTA: Exportar relatório em CSV
+app.get('/api/relatorio-csv', async (req, res) => {
+  const { token, ordenar_por = 'score', filtro_desconto = 0 } = req.query;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Token não fornecido' });
+  }
+
+  try {
+    console.log('📥 Exportando relatório em CSV...');
+
+    const ml = new MercadoLivreAPI(token);
+    const user = await ml.getMe();
+
+    // Gerar cupons
+    const allCoupons = [];
+    const PAGES_TO_FETCH = 20;
+    const COUPONS_PER_PAGE = 15;
+
+    for (let page = 0; page < PAGES_TO_FETCH; page++) {
+      const coupons = generateMockCoupons(page, COUPONS_PER_PAGE);
+      if (!coupons || coupons.length === 0) break;
+      allCoupons.push(...coupons);
+    }
+
+    // Processar cada cupom
+    const relatorio = allCoupons.map(cupom => {
+      const bestProduct = selectBestProduct(produtosDisponiveis);
+      const descontoNumerico = parseInt(cupom.desconto.replace(/\D/g, ''));
+      const potencialGanho = (bestProduct.price * descontoNumerico / 100) * bestProduct.sold_quantity;
+
+      return {
+        cupom_id: cupom.id,
+        marca: cupom.marca,
+        desconto: cupom.desconto,
+        desconto_numerico: descontoNumerico,
+        vencimento: cupom.vencimento,
+        orcamento: parseFloat(cupom.budget.replace(/[^\d,]/g, '').replace(',', '.')),
+        produto_id: bestProduct.id,
+        produto_nome: bestProduct.title,
+        produto_preco: bestProduct.price,
+        produto_vendidos: bestProduct.sold_quantity,
+        produto_disponivel: bestProduct.available_quantity,
+        produto_rating: bestProduct.rating,
+        score_viabilidade: bestProduct.score,
+        potencial_ganho: Math.round(potencialGanho * 100) / 100
+      };
+    });
+
+    // Aplicar filtros e ordenação
+    let relatorioFiltrado = relatorio.filter(item => item.desconto_numerico >= filtro_desconto);
+
+    if (ordenar_por === 'score') {
+      relatorioFiltrado.sort((a, b) => b.score_viabilidade - a.score_viabilidade);
+    } else if (ordenar_por === 'ganho') {
+      relatorioFiltrado.sort((a, b) => b.potencial_ganho - a.potencial_ganho);
+    } else if (ordenar_por === 'desconto') {
+      relatorioFiltrado.sort((a, b) => b.desconto_numerico - a.desconto_numerico);
+    } else if (ordenar_por === 'vendidos') {
+      relatorioFiltrado.sort((a, b) => b.produto_vendidos - a.produto_vendidos);
+    }
+
+    // Gerar CSV
+    const headers = ['ID Cupom', 'Marca', 'Desconto', 'Vencimento', 'Orçamento', 'Produto', 'Preço', 'Vendidos', 'Rating', 'Score', 'Potencial Ganho'];
+    const rows = relatorioFiltrado.map(item => [
+      item.cupom_id,
+      item.marca,
+      item.desconto,
+      item.vencimento,
+      'R$ ' + item.orcamento.toFixed(2),
+      item.produto_nome,
+      'R$ ' + item.produto_preco.toFixed(2),
+      item.produto_vendidos,
+      item.produto_rating,
+      item.score_viabilidade,
+      'R$ ' + item.potencial_ganho.toFixed(2)
+    ]);
+
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="relatorio-cupons.csv"');
+    res.send(csv);
+
+  } catch (error) {
+    console.error('❌ Erro ao exportar CSV:', error.message);
+    res.status(500).json({ error: 'Erro ao exportar CSV', message: error.message });
+  }
+});
+
 function selectBestProduct(products) {
   if (!products || products.length === 0) return null;
 
