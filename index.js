@@ -269,7 +269,7 @@ app.get('/dashboard', (req, res) => {
     return res.status(400).send('Token não fornecido');
   }
 
-  res.send(`<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -465,7 +465,9 @@ app.get('/dashboard', (req, res) => {
     });
   </script>
 </body>
-</html>`);
+</html>`;
+
+  res.send(html);
 });
 
 const PORT = process.env.PORT || 3000;
