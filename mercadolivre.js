@@ -21,21 +21,26 @@ class MercadoLivreAPI {
     }
   }
 
-  // Obter listagens do usuário
+  // Obter itens de venda do usuário (endpoint CORRETO)
   async getMyListings(userId, offset = 0, limit = 50) {
     try {
-      const response = await axios.get(`${this.baseURL}/users/${userId}/listings`, {
+      const response = await axios.get(`${this.baseURL}/users/${userId}/items/search`, {
         params: {
           offset: offset,
-          limit: limit
+          limit: limit,
+          status: 'active'  // Apenas itens ativos/vigentes
         },
         headers: {
           'Authorization': `Bearer ${this.token}`
         }
       });
-      return response.data;
+      return response.data.results || [];
     } catch (error) {
-      console.error('Erro ao obter listagens:', error.message);
+      console.error('Erro ao obter itens de venda:', error.message);
+      if (error.response) {
+        console.error('Status:', error.response.status);
+        console.error('Data:', error.response.data);
+      }
       throw error;
     }
   }
@@ -55,59 +60,31 @@ class MercadoLivreAPI {
     }
   }
 
-  // Buscar produtos por categoria
-  async searchProducts(categoryId, offset = 0, limit = 50) {
+  // Buscar produtos públicos (sem autenticação - API pública)
+  async searchPublicProducts(query = '', categoryId = '', offset = 0, limit = 50) {
     try {
-      const response = await axios.get(`${this.baseURL}/sites/MLB/search`, {
-        params: {
-          category: categoryId,
-          offset: offset,
-          limit: limit,
-          sort: 'relevance'
-        },
-        headers: {
-          'Authorization': `Bearer ${this.token}`
-        }
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Erro ao buscar produtos:', error.message);
-      throw error;
-    }
-  }
+      let params = {
+        offset: offset,
+        limit: limit,
+        sort: 'sold_quantity_desc'  // Ordenar por mais vendidos
+      };
 
-  // Buscar produtos por termo
-  async searchProductsByQuery(query, offset = 0, limit = 50) {
-    try {
-      const response = await axios.get(`${this.baseURL}/sites/MLB/search`, {
-        params: {
-          q: query,
-          offset: offset,
-          limit: limit,
-          sort: 'relevance'
-        },
-        headers: {
-          'Authorization': `Bearer ${this.token}`
-        }
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Erro ao buscar produtos por query:', error.message);
-      throw error;
-    }
-  }
+      if (query) {
+        params.q = query;
+      }
 
-  // Obter categorias
-  async getCategories() {
-    try {
-      const response = await axios.get(`${this.baseURL}/sites/MLB/categories`, {
-        headers: {
-          'Authorization': `Bearer ${this.token}`
-        }
+      if (categoryId) {
+        params.category = categoryId;
+      }
+
+      const response = await axios.get(`${this.baseURL}/sites/MLB/search`, {
+        params: params
+        // NÃO usa token - API pública
       });
+
       return response.data;
     } catch (error) {
-      console.error('Erro ao obter categorias:', error.message);
+      console.error('Erro ao buscar produtos públicos:', error.message);
       throw error;
     }
   }

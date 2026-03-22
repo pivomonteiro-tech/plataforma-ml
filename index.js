@@ -27,7 +27,7 @@ app.get('/status', (req, res) => {
 
 app.use('/auth', authRoutes);
 
-// ROTA: Buscar PRODUTOS REAIS do Mercado Livre (seus próprios produtos)
+// ROTA: Buscar PRODUTOS REAIS (seus + públicos/populares)
 app.get('/api/products', async (req, res) => {
   const { token } = req.query;
 
@@ -44,84 +44,133 @@ app.get('/api/products', async (req, res) => {
     // Obter dados do usuário autenticado
     const user = await ml.getMe();
     console.log(`✅ Autenticado como: ${user.nickname}`);
+    console.log(`ID do usuário: ${user.id}`);
 
-    const allListings = [];
-    const PAGES_TO_FETCH = 10;
-    const ITEMS_PER_PAGE = 50;
+    let allProducts = [];
 
-    // Buscar SEUS PRÓPRIOS produtos listados
-    for (let page = 0; page < PAGES_TO_FETCH; page++) {
-      try {
-        console.log(`📍 Buscando página ${page + 1}/${PAGES_TO_FETCH} de seus produtos...`);
+    // 1. Buscar SEUS PRÓPRIOS produtos (se tiver)
+    try {
+      const allListings = [];
+      const PAGES_TO_FETCH = 5;  // Menos páginas para seus produtos
+      const ITEMS_PER_PAGE = 50;
+
+      for (let page = 0; page < PAGES_TO_FETCH; page++) {
+        console.log(`📍 Buscando seus produtos - página ${page + 1}/${PAGES_TO_FETCH}...`);
         
         const listings = await ml.getMyListings(user.id, page * ITEMS_PER_PAGE, ITEMS_PER_PAGE);
         
         if (!listings || listings.length === 0) {
-          console.log(`⚠️ Nenhum produto encontrado na página ${page + 1}`);
+          console.log(`⚠️ Nenhum seu produto na página ${page + 1}`);
           break;
         }
         
         allListings.push(...listings);
-        console.log(`✅ Página ${page + 1}: ${listings.length} produtos`);
-        
-      } catch (error) {
-        console.error(`❌ Erro ao buscar página ${page + 1}:`, error.message);
-        break;
+        console.log(`✅ Seus produtos página ${page + 1}: ${listings.length}`);
       }
+
+      console.log(`📊 Total de seus produtos: ${allListings.length}`);
+
+      if (allListings.length > 0) {
+        // Buscar detalhes dos seus produtos
+        const userProducts = await Promise.all(
+          allListings.map(async (listing) => {
+            try {
+              const details = await ml.getItemDetails(listing.id);
+              return {
+                id: details.id,
+                title: details.title,
+                price: details.price,
+                sold_quantity: details.sold_quantity || 0,
+                available_quantity: details.available_quantity || 0,
+                category_id: details.category_id,
+                rating: details.rating || 0,
+                status: details.status || 'active',
+                tipo: 'seu_produto'  // Marcar como seu
+              };
+            } catch (error) {
+              console.error(`❌ Erro detalhes seu produto ${listing.id}:`, error.message);
+              return null;
+            }
+          })
+        );
+
+        allProducts = allProducts.concat(userProducts.filter(p => p !== null));
+        console.log(`✅ Seus produtos válidos: ${allProducts.length}`);
+      }
+    } catch (error) {
+      console.error('❌ Erro ao buscar seus produtos:', error.message);
     }
 
-    console.log(`📊 Total de produtos encontrados: ${allListings.length}`);
+    // 2. Complementar com PRODUTOS PÚBLICOS (mais vendidos)
+    try {
+      console.log('🔍 Buscando produtos públicos/populares...');
 
-    if (allListings.length === 0) {
-      console.log('⚠️ AVISO: Você não tem produtos listados no Mercado Livre!');
+      // Buscar produtos mais vendidos em categorias populares (API pública)
+      const categoriasPopulares = [
+        'MLA1055',  // Eletrônicos
+        'MLA1744',  // Casa e Jardim
+        'MLA1644',  // Esportes
+        'MLA1574',  // Moda
+        'MLA4092'   // Beleza
+      ];
+
+      const produtosPublicos = [];
+      const LIMIT_PUBLIC = 20;  // Limitar para não sobrecarregar
+
+      for (let cat of categoriasPopulares) {
+        try {
+          const response = await ml.searchPublicProducts('', cat, 0, 10);  // 10 por categoria
+          
+          if (response.results && response.results.length > 0) {
+            const processed = response.results.map(product => ({
+              id: product.id,
+              title: product.title,
+              price: product.price,
+              sold_quantity: product.sold_quantity || 0,
+              available_quantity: product.available_quantity || 0,
+              category_id: product.category_id,
+              rating: product.rating || 0,
+              status: 'active',
+              tipo: 'publico'  // Marcar como público
+            })).slice(0, 5);  // Apenas 5 por categoria
+
+            produtosPublicos.push(...processed);
+            console.log(`✅ Categoria ${cat}: ${processed.length} produtos públicos`);
+          }
+        } catch (error) {
+          console.error(`❌ Erro categoria ${cat}:`, error.message);
+        }
+      }
+
+      // Adicionar produtos públicos (limitado)
+      allProducts = allProducts.concat(produtosPublicos.slice(0, LIMIT_PUBLIC));
+      console.log(`📊 Total de produtos públicos adicionados: ${produtosPublicos.length}`);
+    } catch (error) {
+      console.error('❌ Erro ao buscar produtos públicos:', error.message);
+    }
+
+    console.log(`📊 Total final de produtos: ${allProducts.length}`);
+
+    if (allProducts.length === 0) {
       return res.json({
         user: user.nickname,
         total_products: 0,
         products_fetched: 0,
         products: [],
-        message: 'Você não tem produtos listados. Crie alguns produtos no Mercado Livre para começar.'
+        message: 'Nenhum produto encontrado. Verifique sua conexão ou liste produtos no Mercado Livre.'
       });
     }
 
-    // Buscar detalhes de cada produto
-    const products = await Promise.all(
-      allListings.map(async (listing) => {
-        try {
-          console.log(`🔍 Buscando detalhes do produto: ${listing.id}`);
-          
-          const details = await ml.getItemDetails(listing.id);
-          
-          return {
-            id: details.id,
-            title: details.title,
-            price: details.price,
-            sold_quantity: details.sold_quantity || 0,
-            available_quantity: details.available_quantity || 0,
-            category_id: details.category_id,
-            rating: details.rating || 0,
-            status: details.status || 'active'
-          };
-        } catch (error) {
-          console.error(`❌ Erro ao buscar detalhes do produto ${listing.id}:`, error.message);
-          return null;
-        }
-      })
-    );
-
-    const validProducts = products.filter(p => p !== null);
-
-    console.log(`✅ Produtos válidos: ${validProducts.length}`);
-
     res.json({
       user: user.nickname,
-      total_products: allListings.length,
-      products_fetched: validProducts.length,
-      products: validProducts
+      total_products: allProducts.length,
+      products_fetched: allProducts.length,
+      products: allProducts,
+      fonte_dados: 'API Mercado Livre (seus + públicos)'
     });
 
   } catch (error) {
-    console.error('❌ Erro ao buscar produtos:', error.message);
-    console.error('Stack:', error.stack);
+    console.error('❌ Erro geral ao buscar produtos:', error.message);
     res.status(500).json({ error: 'Erro ao buscar produtos', message: error.message });
   }
 });
