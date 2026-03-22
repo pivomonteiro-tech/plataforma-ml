@@ -6,7 +6,7 @@ class MercadoLivreAPI {
     this.baseURL = 'https://api.mercadolibre.com';
   }
 
-  // Obter dados do usuário autenticado
+  // Obter dados do usuário (só para autenticação)
   async getMe() {
     try {
       const response = await axios.get(`${this.baseURL}/users/me`, {
@@ -21,52 +21,24 @@ class MercadoLivreAPI {
     }
   }
 
-  // Obter itens de venda do usuário (endpoint CORRETO)
-  async getMyListings(userId, offset = 0, limit = 50) {
+  // Buscar categorias públicas (sem token - da documentação /sites/MLB/categories)
+  async getCategories(siteId = 'MLB') {
     try {
-      const response = await axios.get(`${this.baseURL}/users/${userId}/items/search`, {
-        params: {
-          offset: offset,
-          limit: limit,
-          status: 'active'  // Apenas itens ativos/vigentes
-        },
-        headers: {
-          'Authorization': `Bearer ${this.token}`
-        }
-      });
-      return response.data.results || [];
-    } catch (error) {
-      console.error('Erro ao obter itens de venda:', error.message);
-      if (error.response) {
-        console.error('Status:', error.response.status);
-        console.error('Data:', error.response.data);
-      }
-      throw error;
-    }
-  }
-
-  // Obter detalhes de um item
-  async getItemDetails(itemId) {
-    try {
-      const response = await axios.get(`${this.baseURL}/items/${itemId}`, {
-        headers: {
-          'Authorization': `Bearer ${this.token}`
-        }
-      });
+      const response = await axios.get(`${this.baseURL}/sites/${siteId}/categories`);
       return response.data;
     } catch (error) {
-      console.error('Erro ao obter detalhes do item:', error.message);
+      console.error('Erro ao obter categorias:', error.message);
       throw error;
     }
   }
 
-  // Buscar produtos públicos (sem autenticação - API pública)
+  // Buscar produtos públicos por categoria ou termo (sem token - da documentação /sites/MLB/search)
   async searchPublicProducts(query = '', categoryId = '', offset = 0, limit = 50) {
     try {
       let params = {
         offset: offset,
         limit: limit,
-        sort: 'sold_quantity_desc'  // Ordenar por mais vendidos
+        sort: 'sold_quantity_desc'  // Ordenar por mais vendidos (útil para afiliados)
       };
 
       if (query) {
@@ -79,12 +51,24 @@ class MercadoLivreAPI {
 
       const response = await axios.get(`${this.baseURL}/sites/MLB/search`, {
         params: params
-        // NÃO usa token - API pública
+        // SEM token - endpoint público
       });
 
       return response.data;
     } catch (error) {
       console.error('Erro ao buscar produtos públicos:', error.message);
+      throw error;
+    }
+  }
+
+  // Obter detalhes de um item (pode usar token se necessário, mas público também funciona)
+  async getItemDetails(itemId) {
+    try {
+      const response = await axios.get(`${this.baseURL}/items/${itemId}`);
+      // Sem token para detalhes públicos
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao obter detalhes do item:', error.message);
       throw error;
     }
   }
