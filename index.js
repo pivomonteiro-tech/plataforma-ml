@@ -27,64 +27,102 @@ app.get('/status', (req, res) => {
 
 app.use('/auth', authRoutes);
 
-// ROTA: Produtos reais via scraping
+// ROTA: Produtos de Afiliados (dados reais com comissão)
 app.get('/api/products', async (req, res) => {
   const { token } = req.query;
 
   if (!token) return res.status(401).json({ error: 'Token não fornecido' });
 
   try {
-    console.log('📦 Buscando produtos reais via scraping...');
+    console.log('📦 Buscando produtos de afiliados (dados reais)...');
 
-    // INSTANCIAR CORRETAMENTE
-    const MercadoLivreAPI = require('./mercadolivre');
-    const ml = new MercadoLivreAPI(token);
-
-    // Chamar getMe (agora vai funcionar)
-    const user = await ml.getMe();
-    console.log(`✅ Usuário: ${user.nickname}`);
-
-    const categories = await ml.getCategories();
-    console.log(`📂 Categorias: ${categories.length}`);
+    const MercadoLivreAfiliados = require('./afiliados');
+    const affiliateId = process.env.ML_AFFILIATE_ID;
+    const afiliados = new MercadoLivreAfiliados(affiliateId, token);
 
     const allProducts = [];
-    const limitPorCat = 10;
+    const categories = [
+      { id: 'MLA1051', name: 'Celulares' },
+      { id: 'MLA1000', name: 'Eletrônicos' },
+      { id: 'MLA1574', name: 'Roupas' },
+      { id: 'MLA1744', name: 'Casa' },
+      { id: 'MLA1276', name: 'Esportes' }
+    ];
 
+    // Buscar produtos de cada categoria
     for (let cat of categories) {
       try {
-        const response = await ml.searchPublicProducts('', cat.id, 0, limitPorCat);
-        
-        if (response.results && response.results.length > 0) {
-          allProducts.push(...response.results);
-          console.log(`✅ ${cat.name}: ${response.results.length} produtos reais`);
-        }
+        const products = await afiliados.getAffiliateProducts(cat.id, 0, 10);
+        allProducts.push(...products);
+        console.log(`✅ ${cat.name}: ${products.length} produtos com comissão`);
       } catch (error) {
         console.error(`❌ ${cat.name}:`, error.message);
       }
     }
 
-    console.log(`📊 Total: ${allProducts.length} produtos`);
+    console.log(`📊 Total: ${allProducts.length} produtos de afiliados`);
 
     if (allProducts.length === 0) {
       return res.json({
-        user: user.nickname,
+        user: 'Afiliado',
         total_products: 0,
         products: [],
-        message: 'Nenhum produto encontrado'
+        message: 'Nenhum produto encontrado. Verifique suas credenciais de afiliado.'
       });
     }
 
     res.json({
-      user: user.nickname,
+      user: 'Afiliado',
       total_products: allProducts.length,
       products_fetched: allProducts.length,
       products: allProducts.slice(0, 50),
-      fonte_dados: 'Scraping Site ML (dados reais)'
+      fonte_dados: 'API de Afiliados Mercado Livre (dados reais com comissão)'
     });
 
   } catch (error) {
-    console.error('❌ Erro geral produtos:', error.message);
+    console.error('❌ Erro geral:', error.message);
     res.status(500).json({ error: 'Erro ao buscar produtos', message: error.message });
+  }
+});
+
+// ROTA: Relatório de Cupons + Comissão
+app.get('/api/relatorio-cupons', async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) return res.status(401).json({ error: 'Token não fornecido' });
+
+  try {
+    console.log('📊 Gerando relatório de cupons + comissão...');
+
+    const MercadoLivreAfiliados = require('./afiliados');
+    const affiliateId = process.env.ML_AFFILIATE_ID;
+    const afiliados = new MercadoLivreAfiliados(affiliateId, token);
+
+    // Buscar produtos e cupons
+    const products = await afiliados.getAffiliateProducts('MLA1051', 0, 20);
+    const coupons = await afiliados.getActiveCoupons();
+
+    // Calcular potencial para cada produto
+    const analysis = products.map(product => {
+      const bestCoupon = coupons.find(c => c.category === product.category_id);
+      return afiliados.calculatePotential(product, bestCoupon);
+    });
+
+    // Ordenar por potencial total
+    analysis.sort((a, b) => b.total_potential - a.total_potential);
+
+    res.json({
+      total_products: analysis.length,
+      total_coupons: coupons.length,
+      analysis: analysis.slice(0, 20),
+      top_product: analysis[0],
+      estimated_monthly_commission: analysis.reduce((sum, p) => sum + p.estimated_monthly_commission, 0),
+      fonte_dados: 'API de Afiliados + Cupons Mercado Livre'
+    });
+
+  } catch (error) {
+    console.error('❌ Erro relatório:', error.message);
+    res.status(500).json({ error: 'Erro ao gerar relatório', message: error.message });
   }
 });
 
